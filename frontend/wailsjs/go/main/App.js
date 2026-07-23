@@ -30,10 +30,6 @@ export function StartFullPipelineScan(arg1) {
   return window['go']['main']['App']['StartFullPipelineScan'](arg1);
 }
 
-export function SuggestGlossary(arg1, arg2) {
-  return window['go']['main']['App']['SuggestGlossary'](arg1, arg2);
-}
-
-export function TranslateDialogues(arg1, arg2, arg3) {
-  return window['go']['main']['App']['TranslateDialogues'](arg1, arg2, arg3);
+export function TranslateDialogues(arg1, arg2) {
+  return window['go']['main']['App']['TranslateDialogues'](arg1, arg2);
 }

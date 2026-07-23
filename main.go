@@ -37,7 +37,7 @@ func main() {
 		DisableResize:    false,
 		Fullscreen:       false,
 		Frameless:        false,
-		BackgroundColour: &options.RGBA{R: 15, G: 12, B: 27, A: 255},
+		BackgroundColour: &options.RGBA{R: 13, G: 15, B: 23, A: 255},
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -5,14 +5,31 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"image"
-	"image/jpeg"
-	"io"
-	"mime/multipart"
+	"math"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
+
+	"translate-video/pkg/translation"
 )
+
+type OCRFullFrameItem struct {
+	Text  string `json:"text"`
+	Score float64 `json:"score"`
+	BBox  [4]int  `json:"bbox"`
+}
+
+type OCRFullFrameBatchResult struct {
+	Path    string             `json:"path"`
+	Success bool               `json:"success"`
+	Items   []OCRFullFrameItem `json:"items"`
+	Error   string             `json:"error"`
+}
+
+type OCRFullFrameBatchResponse struct {
+	Results []OCRFullFrameBatchResult `json:"results"`
+}
 
 var HTTPClient = &http.Client{
 	Timeout: 15 * time.Second,
@@ -23,148 +40,64 @@ var HTTPClient = &http.Client{
 	},
 }
 
-func CallPythonOCRWithContext(ctx context.Context, img image.Image, lang string) (string, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	buf := new(bytes.Buffer)
-	if err := jpeg.Encode(buf, img, &jpeg.Options{Quality: 95}); err != nil {
-		return "", err
+func MergeVerticallyAdjacentLines(items []OCRFullFrameItem) []OCRFullFrameItem {
+	if len(items) <= 1 {
+		return items
 	}
 
-	body := new(bytes.Buffer)
-	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("file", "bubble.jpg")
-	if err != nil {
-		return "", err
-	}
-	if _, err := io.Copy(part, buf); err != nil {
-		return "", err
-	}
-	writer.WriteField("lang", lang)
-	writer.Close()
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].BBox[1] < items[j].BBox[1]
+	})
 
-	req, err := http.NewRequestWithContext(ctx, "POST", "http://127.0.0.1:8000/ocr", body)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	var merged []OCRFullFrameItem
+	visited := make([]bool, len(items))
 
-	resp, err := HTTPClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Success bool   `json:"success"`
-		Text    string `json:"text"`
-		Error   string `json:"error"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
-	}
-
-	if !result.Success {
-		return "", fmt.Errorf("OCR error: %s", result.Error)
-	}
-
-	return strings.TrimSpace(result.Text), nil
-}
-
-func CallPythonOCR(img image.Image, lang string) (string, error) {
-	return CallPythonOCRWithContext(context.Background(), img, lang)
-}
-
-func CallPythonOCRBatchWithContext(ctx context.Context, imgs []image.Image, lang string) ([]string, error) {
-	if len(imgs) == 0 {
-		return nil, nil
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if len(imgs) == 1 {
-		res, err := CallPythonOCRWithContext(ctx, imgs[0], lang)
-		if err != nil {
-			return nil, err
+	for i := 0; i < len(items); i++ {
+		if visited[i] {
+			continue
 		}
-		return []string{res}, nil
-	}
+		curr := items[i]
+		visited[i] = true
 
-	body := new(bytes.Buffer)
-	writer := multipart.NewWriter(body)
+		for j := i + 1; j < len(items); j++ {
+			if visited[j] {
+				continue
+			}
+			next := items[j]
 
-	for i, img := range imgs {
-		buf := new(bytes.Buffer)
-		if err := jpeg.Encode(buf, img, &jpeg.Options{Quality: 95}); err != nil {
-			return nil, err
+			currX1, currY1, currW, currH := curr.BBox[0], curr.BBox[1], curr.BBox[2], curr.BBox[3]
+			nextX1, nextY1, nextW, nextH := next.BBox[0], next.BBox[1], next.BBox[2], next.BBox[3]
+
+			currX2 := currX1 + currW
+			currY2 := currY1 + currH
+			nextX2 := nextX1 + nextW
+			nextY2 := nextY1 + nextH
+
+			vertGap := nextY1 - currY2
+			currCenterX := float64(currX1+currX2) / 2.0
+			nextCenterX := float64(nextX1+nextX2) / 2.0
+			centerDiff := math.Abs(currCenterX - nextCenterX)
+			minW := math.Min(float64(currW), float64(nextW))
+
+			if vertGap >= -20 && vertGap <= 50 && centerDiff <= math.Max(150.0, minW*1.2) {
+				if translation.IsCJK(curr.Text) || translation.IsCJK(next.Text) {
+					curr.Text = strings.TrimSpace(curr.Text) + strings.TrimSpace(next.Text)
+				} else {
+					curr.Text = strings.TrimSpace(curr.Text) + " " + strings.TrimSpace(next.Text)
+				}
+
+				minX := min(currX1, nextX1)
+				minY := min(currY1, nextY1)
+				maxX := max(currX2, nextX2)
+				maxY := max(currY2, nextY2)
+				curr.BBox = [4]int{minX, minY, maxX - minX, maxY - minY}
+				visited[j] = true
+			}
 		}
-		part, err := writer.CreateFormFile("files", fmt.Sprintf("bubble_%d.jpg", i))
-		if err != nil {
-			return nil, err
-		}
-		if _, err := io.Copy(part, buf); err != nil {
-			return nil, err
-		}
-	}
-	writer.WriteField("lang", lang)
-	writer.Close()
-
-	req, err := http.NewRequestWithContext(ctx, "POST", "http://127.0.0.1:8000/ocr_batch", body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-
-	resp, err := HTTPClient.Do(req)
-	if err != nil {
-		results := make([]string, len(imgs))
-		for i, img := range imgs {
-			txt, _ := CallPythonOCRWithContext(ctx, img, lang)
-			results[i] = txt
-		}
-		return results, nil
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		results := make([]string, len(imgs))
-		for i, img := range imgs {
-			txt, _ := CallPythonOCRWithContext(ctx, img, lang)
-			results[i] = txt
-		}
-		return results, nil
+		merged = append(merged, curr)
 	}
 
-	var batchResp struct {
-		Results []struct {
-			Success bool   `json:"success"`
-			Text    string `json:"text"`
-			Error   string `json:"error"`
-		} `json:"results"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&batchResp); err != nil {
-		results := make([]string, len(imgs))
-		for i, img := range imgs {
-			txt, _ := CallPythonOCRWithContext(ctx, img, lang)
-			results[i] = txt
-		}
-		return results, nil
-	}
-
-	results := make([]string, len(imgs))
-	for i, item := range batchResp.Results {
-		if i < len(results) && item.Success {
-			results[i] = strings.TrimSpace(item.Text)
-		}
-	}
-	return results, nil
-}
-
-func CallPythonOCRBatch(imgs []image.Image, lang string) ([]string, error) {
-	return CallPythonOCRBatchWithContext(context.Background(), imgs, lang)
+	return merged
 }
 
 func CallPythonOCRFullFrameBatch(ctx context.Context, paths []string, lang string) (map[string][]OCRFullFrameItem, error) {

@@ -37,22 +37,11 @@ type HealthStatus struct {
 }
 
 type ScanConfig struct {
-	VideoPath        string  `json:"videoPath"`
-	Interval         float64 `json:"interval"`
-	Threshold        uint8   `json:"threshold"`
-	SourceLang       string  `json:"sourceLang"`
-	GeminiKey        string  `json:"geminiKey"`
-	DetectorRevision int     `json:"detectorRevision"`
-	ScanMode         string  `json:"scanMode"`
-}
-
-const SpeechBubbleDetectorRevision = 4
-
-func ConfigMatches(c1, c2 ScanConfig) bool {
-	return c1.Threshold == c2.Threshold &&
-		c1.Interval == c2.Interval &&
-		c1.SourceLang == c2.SourceLang &&
-		c1.DetectorRevision == c2.DetectorRevision
+	VideoPath  string  `json:"videoPath"`
+	Interval   float64 `json:"interval"`
+	Threshold  uint8   `json:"threshold"`
+	SourceLang string  `json:"sourceLang"`
+	GeminiKey  string  `json:"geminiKey"`
 }
 
 func FormatTimeSec(seconds float64) string {

@@ -1,4 +1,3 @@
-// TranslateVideo Streamlined Frontend Controller
 (function () {
     const video = document.getElementById('video-player');
     const canvas = document.getElementById('overlay-canvas');
@@ -30,9 +29,7 @@
     let dialogues = [];
     let selectedDialogueId = null;
     let isProcessing = false;
-    let dragState = null;
 
-    // Load saved Gemini API Key
     const savedKey = localStorage.getItem('gemini_api_key') || '';
     if (savedKey) {
         geminiKeyInput.value = savedKey;
@@ -44,7 +41,6 @@
         checkHealth();
     });
 
-    // Check backend health
     async function checkHealth() {
         if (!window.go || !window.go.main || !window.go.main.App) return;
         try {
@@ -69,11 +65,9 @@
         }
     }
 
-    // Health check polling
     setInterval(checkHealth, 5000);
     setTimeout(checkHealth, 500);
 
-    // File Selection
     btnSelectVideo.addEventListener('click', async () => {
         if (!window.go || !window.go.main || !window.go.main.App) return;
         try {
@@ -91,7 +85,6 @@
         }
     });
 
-    // ResizeObserver for Canvas
     const resizeObserver = new ResizeObserver(() => {
         if (videoContainer) {
             canvas.width = videoContainer.clientWidth;
@@ -156,7 +149,6 @@
                 ctx.fillRect(bx, by, bw, bh);
                 ctx.strokeRect(bx, by, bw, bh);
 
-                // Draw label badge
                 ctx.fillStyle = isSelected ? '#6366f1' : '#10b981';
                 ctx.fillRect(bx, by - 20, 40, 20);
                 ctx.fillStyle = '#ffffff';
@@ -168,7 +160,6 @@
         });
     }
 
-    // Start Full Pipeline Scan
     btnStartScan.addEventListener('click', async () => {
         if (!currentVideoPath || isProcessing) return;
         isProcessing = true;
@@ -190,8 +181,7 @@
                 interval: 0.30,
                 threshold: 240,
                 sourceLang: 'chi_sim',
-                geminiKey: geminiKeyInput.value.trim(),
-                scanMode: 'full_frame'
+                geminiKey: geminiKeyInput.value.trim()
             };
 
             const results = await window.go.main.App.StartFullPipelineScan(config);
@@ -211,7 +201,6 @@
         }
     });
 
-    // Translate All Dialogues with Gemini
     btnTranslateAll.addEventListener('click', async () => {
         if (dialogues.length === 0 || isProcessing) return;
         const key = geminiKeyInput.value.trim();
@@ -224,7 +213,7 @@
         showModal('🌐 Đang Dịch Tự Động Qua Gemini 2.5 Flash...');
 
         try {
-            const translated = await window.go.main.App.TranslateDialogues(key, dialogues, '');
+            const translated = await window.go.main.App.TranslateDialogues(key, dialogues);
             dialogues = translated || dialogues;
             renderDialogueList();
             drawOverlay();
@@ -236,7 +225,6 @@
         }
     });
 
-    // Export Video
     btnExportVideo.addEventListener('click', async () => {
         if (!currentVideoPath || dialogues.length === 0 || isProcessing) return;
         try {
@@ -257,7 +245,6 @@
         }
     });
 
-    // Render Streamlined Dialogue Cards
     function renderDialogueList() {
         dialogueCount.textContent = dialogues.filter(d => chkShowTrash.checked || !d.isTrash).length;
         dialogueList.innerHTML = '';
@@ -301,7 +288,6 @@
                 </div>
             `;
 
-            // Card click & select
             card.addEventListener('click', (e) => {
                 if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
                 selectedDialogueId = d.id;
@@ -310,7 +296,6 @@
                 drawOverlay();
             });
 
-            // Input handlers
             const inputTrans = card.querySelector('.translated-input');
             inputTrans.addEventListener('input', () => {
                 d.translated = inputTrans.value;

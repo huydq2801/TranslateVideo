@@ -90,8 +90,6 @@ export namespace config {
 	    threshold: number;
 	    sourceLang: string;
 	    geminiKey: string;
-	    detectorRevision: number;
-	    scanMode: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ScanConfig(source);
@@ -104,27 +102,6 @@ export namespace config {
 	        this.threshold = source["threshold"];
 	        this.sourceLang = source["sourceLang"];
 	        this.geminiKey = source["geminiKey"];
-	        this.detectorRevision = source["detectorRevision"];
-	        this.scanMode = source["scanMode"];
-	    }
-	}
-
-}
-
-export namespace translation {
-	
-	export class GlossaryEntry {
-	    source: string;
-	    target: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new GlossaryEntry(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.source = source["source"];
-	        this.target = source["target"];
 	    }
 	}
 

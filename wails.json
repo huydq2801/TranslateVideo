@@ -3,11 +3,8 @@
   "name": "ComicifyTranslator",
   "outputfilename": "ComicifyTranslator",
   "frontend:dir": "frontend",
-  "frontend:build": "",
-  "frontend:install": "",
-  "frontend:dev:watcher": "",
-  "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "Antigravity"
+    "name": "HuyDoan",
+    "email": "huydq2801@gmail.com"
   }
 }

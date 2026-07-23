@@ -25,7 +25,6 @@ type App struct {
 	ctx        context.Context
 	scanCancel context.CancelFunc
 	scanMutex  sync.Mutex
-	Headless   bool
 }
 
 func NewApp() *App {
@@ -94,8 +93,7 @@ func (a *App) CheckSystemHealth(apiKey string) config.HealthStatus {
 	}
 
 	apiKey = strings.TrimSpace(apiKey)
-	envKey := strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
-	if apiKey != "" || envKey != "" {
+	if apiKey != "" {
 		status.HasAPIKey = true
 	}
 
@@ -127,7 +125,6 @@ func (a *App) StartFullPipelineScan(cfg config.ScanConfig) ([]config.DialogueIte
 	if cfg.Threshold == 0 {
 		cfg.Threshold = 240
 	}
-	cfg.DetectorRevision = config.SpeechBubbleDetectorRevision
 
 	scanCtx, cancel := context.WithCancel(a.ctx)
 	a.scanMutex.Lock()
@@ -152,17 +149,10 @@ func (a *App) StartFullPipelineScan(cfg config.ScanConfig) ([]config.DialogueIte
 	return pipeline.ScanFullFramePipeline(scanCtx, cfg, onProgress)
 }
 
-func (a *App) SuggestGlossary(apiKey string, dialogues []config.DialogueItem) ([]translation.GlossaryEntry, error) {
-	return translation.SuggestGlossary(a.ctx, apiKey, dialogues)
-}
-
-func (a *App) TranslateDialogues(apiKey string, dialogues []config.DialogueItem, glossaryJSON string) ([]config.DialogueItem, error) {
+func (a *App) TranslateDialogues(apiKey string, dialogues []config.DialogueItem) ([]config.DialogueItem, error) {
 	if len(dialogues) == 0 {
 		return dialogues, nil
 	}
-
-	entries := translation.ParseGlossary(glossaryJSON)
-	glossaryText := translation.GlossaryPrompt(entries)
 
 	for i := range dialogues {
 		d := &dialogues[i]
@@ -170,8 +160,8 @@ func (a *App) TranslateDialogues(apiKey string, dialogues []config.DialogueItem,
 			continue
 		}
 
-		prompt := fmt.Sprintf(`Dịch câu thoại truyện tranh sau từ Tiếng Trung sang Tiếng Việt tự nhiên: "%s"%s.
-CHỈ trả về kết quả tiếng Việt dịch xong. KHÔNG thêm giải thích hay ngoặc kép.`, d.Original, glossaryText)
+		prompt := fmt.Sprintf(`Dịch câu thoại truyện tranh sau từ Tiếng Trung sang Tiếng Việt tự nhiên: "%s".
+CHỈ trả về kết quả tiếng Việt dịch xong. KHÔNG thêm giải thích hay ngoặc kép.`, d.Original)
 
 		res, err := translation.CallGeminiAPIWithContext(a.ctx, apiKey, prompt)
 		if err == nil && res != "" {
