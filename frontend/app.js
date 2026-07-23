@@ -86,6 +86,8 @@
             if (filePath) {
                 currentVideoPath = filePath;
                 video.src = `/wails-local-video?path=${encodeURIComponent(filePath)}`;
+                video.load();
+                video.play().catch(e => console.log('Autoplay prevented:', e));
                 btnStartScan.disabled = false;
                 dialogues = [];
                 renderDialogueList();
@@ -94,6 +96,14 @@
         } catch (e) {
             alert('Lỗi chọn video: ' + e);
         }
+    });
+
+    video.addEventListener('loadedmetadata', () => {
+        if (videoContainer) {
+            canvas.width = videoContainer.clientWidth;
+            canvas.height = videoContainer.clientHeight;
+        }
+        drawOverlay();
     });
 
     const resizeObserver = new ResizeObserver(() => {
