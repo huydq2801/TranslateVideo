@@ -183,13 +183,6 @@
     });
     if (videoContainer) resizeObserver.observe(videoContainer);
 
-    function loopDraw() {
-        drawOverlay();
-        if (!video.paused && !video.ended) {
-            requestAnimationFrame(loopDraw);
-        }
-    }
-
     function previewLayout() {
         if (!video.videoWidth || !video.videoHeight || !canvas.width || !canvas.height) return null;
         const scale = Math.min(canvas.width / video.videoWidth, canvas.height / video.videoHeight);

@@ -44,6 +44,7 @@ func main() {
 				if strings.HasPrefix(r.URL.Path, "/wails-local-video") {
 					w.Header().Set("Access-Control-Allow-Origin", "*")
 					w.Header().Set("Accept-Ranges", "bytes")
+					w.Header().Set("Cache-Control", "no-cache, private")
 
 					filePath := r.URL.Query().Get("path")
 					if filePath == "" {
