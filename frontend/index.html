@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comicify Video Translator - Trình Dịch Video Local & Gemini AI</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Comic+Neue:ital,wght@0,400;0,700;1,700&family=Inter:wght@300;400;600;800&family=Bangers&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header & Health Bar -->
+        <header class="app-header">
+            <div class="logo">
+                <i class="fa-solid fa-mask"></i>
+                <h1>Comicify <span>Video Translator</span></h1>
+            </div>
+            
+            <!-- Health Indicators Dashboard -->
+            <div class="health-dashboard">
+                <div class="health-badge" id="badge-ocr" title="Trạng thái dịch vụ OCR (Python Sidecar)">
+                    <span class="dot offline"></span> OCR: <span id="ocr-status-text">Đang kiểm tra...</span>
+                </div>
+                <div class="health-badge" id="badge-gemini" title="Trạng thái Gemini API Key">
+                    <span class="dot offline"></span> Gemini AI: <span id="gemini-status-text">Đang kiểm tra...</span>
+                </div>
+                <div class="model-select-wrap">
+                    <label for="input-gemini-key"><i class="fa-solid fa-key"></i> API Key:</label>
+                    <input type="password" id="input-gemini-key" placeholder="Nhập Gemini API Key (AI Studio)..." style="width: 210px; background: #26203a; color: #fff; border: 1px solid #3b3254; padding: 4px 8px; border-radius: 6px; font-size: 0.85rem;">
+                </div>
+                <button id="btn-export-video" class="btn btn-secondary btn-sm"><i class="fa-solid fa-file-video"></i> Xuất Video Dịch</button>
+            </div>
+        </header>
+
+        <!-- Main Workspace -->
+        <main class="app-body">
+            <!-- Left Panel: Player & Controls -->
+            <section class="player-panel">
+                <div class="video-container-outer" id="video-container-outer">
+                    <div class="video-container" id="video-container">
+                        <video id="video-player" controls preload="auto" playsinline style="width: 100%; height: 100%; object-fit: contain;"></video>
+                        <canvas id="bubble-canvas"></canvas>
+                    </div>
+                    <div class="empty-video-state" aria-live="polite">
+                        <i class="fa-solid fa-folder-open"></i>
+                        <strong>Chọn video để bắt đầu</strong>
+                        <span>Thiết lập quét và Glossary vẫn sẵn sàng bên dưới.</span>
+                    </div>
+                </div>
+
+                <div class="player-controls">
+                    <div class="control-row">
+                        <button id="btn-select-video" class="btn btn-secondary"><i class="fa-solid fa-folder-open"></i> Chọn Video</button>
+                        <button id="btn-scan-full" class="btn btn-accent requires-video"><i class="fa-solid fa-film"></i> 1. Quét Frame & OCR (Local)</button>
+                        <button id="btn-filter-trash" class="btn btn-secondary requires-video" title="AI tự động phát hiện và loại bỏ các thoại rác phông nền (nhãn hiệu áo, UI game...)"><i class="fa-solid fa-filter-circle-xmark"></i> 🧹 AI Lọc Thoại Rác</button>
+                        <button id="btn-snap-all" class="btn btn-secondary requires-video" title="AI tự động căn chỉnh viền bóng thoại vừa khít cho toàn bộ danh sách thoại"><i class="fa-solid fa-wand-magic-sparkles"></i> 📐 AI Auto-Snap Tất Cả Khung</button>
+                        <button id="btn-batch-translate" class="btn btn-primary requires-video"><i class="fa-solid fa-wand-magic-sparkles"></i> 2. Dịch Ngữ Cảnh Batch (Gemini AI)</button>
+                        <div class="mode-toggle-group requires-video">
+                            <button id="btn-mode-preview" class="btn active" title="Xem video chuẩn như kết quả xuất MP4"><i class="fa-solid fa-play"></i> 1. Xem trước Hoàn chỉnh</button>
+                            <button id="btn-mode-edit" class="btn" title="Chế độ kéo thả 8 điểm để chỉnh sửa vị trí và kích thước khung"><i class="fa-solid fa-pen-to-square"></i> 2. Chỉnh sửa Khung</button>
+                        </div>
+                        <button id="btn-add-manual" class="btn btn-secondary requires-video" title="Thêm một khung thoại mới tại giây hiện tại của video"><i class="fa-solid fa-plus-circle"></i> + Thêm Thoại Thủ Công</button>
+                        <button id="btn-scan-frame-ai" class="btn btn-primary requires-video" title="AI tự động bóc tách chữ và dịch các thoại tại vị trí giây hiện tại của video"><i class="fa-solid fa-wand-magic-sparkles"></i> 🎯 AI Quét Frame Này</button>
+                    </div>
+
+                    <div class="control-row settings-row">
+                        <div class="setting-item">
+                            <label for="scan-mode">Chế độ quét:</label>
+                            <select id="scan-mode" style="background: #26203a; color: #fff; border: 1px solid #3b3254; padding: 4px; border-radius: 6px;">
+                                <option value="full_frame">Quét Toàn Khung Hình (Nhanh & Chuẩn - Mới)</option>
+                                <option value="bubble_detect">Dò Tìm Bóng Thoại (Cũ)</option>
+                            </select>
+                        </div>
+                        <div class="setting-item">
+                            <label for="scan-interval">Chu kỳ quét (giây):</label>
+                            <input type="number" id="scan-interval" value="0.3" min="0.1" max="10" step="0.1" style="width: 65px;">
+                        </div>
+                        <div class="setting-item">
+                            <label for="scan-language">Ngôn ngữ nguồn:</label>
+                            <select id="scan-language">
+                                <option value="chi_sim">Trung Giản Thể (chi_sim)</option>
+                                <option value="eng">Tiếng Anh (eng)</option>
+                            </select>
+                        </div>
+                        <div class="setting-item" style="flex: 1;">
+                            <label for="bubble-threshold">Độ nhạy bóng thoại trắng:</label>
+                            <input type="range" id="bubble-threshold" min="200" max="255" value="240">
+                            <span id="threshold-val">240</span>
+                        </div>
+                    </div>
+                    <details class="translation-glossary">
+                        <summary><i class="fa-solid fa-people-group"></i> Glossary nhân vật & cách xưng hô</summary>
+                        <p>Bấm <strong>AI gợi ý từ OCR</strong> sau khi quét để tự điền. Bạn chỉ cần kiểm tra phần tiếng Việt; không cần biết hoặc gõ tiếng Trung.</p>
+                        <button id="btn-suggest-glossary" class="btn btn-xs btn-secondary" type="button"><i class="fa-solid fa-wand-magic-sparkles"></i> AI gợi ý từ OCR</button>
+                        <textarea id="translation-glossary" rows="4" spellcheck="false" placeholder="黄老师 => cô Hoàng&#10;小明 => Tiểu Minh"></textarea>
+                    </details>
+                </div>
+            </section>
+
+            <!-- Right Panel: Manga Strip -->
+            <section class="comic-panel">
+                <div class="panel-header">
+                    <h2><i class="fa-solid fa-book-open"></i> Live Manga Strip (Khung Thoại Dịch)</h2>
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <label style="font-size: 0.82rem; cursor: pointer; color: #a19bb5; user-select: none;" title="Hiển thị cả các mục thoại rác đã bị AI lọc bỏ">
+                            <input type="checkbox" id="chk-show-trash" style="cursor: pointer;"> Hiện thoại rác (<span id="trash-count">0</span>)
+                        </label>
+                        <button id="btn-retry-failed" class="btn btn-xs btn-primary" title="Thử dịch lại các câu thoại bị lỗi bằng Gemini AI"><i class="fa-solid fa-rotate-right"></i> Dịch Lại Câu Lỗi</button>
+                    </div>
+                </div>
+                <div class="comic-strip-container" id="comic-strip">
+                    <div class="empty-state">
+                        <i class="fa-solid fa-photo-film"></i>
+                        <p>Chưa có bong bóng thoại nào. Bấm <strong>"Chọn Video"</strong> và <strong>"Quét Frame & OCR"</strong> để bắt đầu!</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Progress Overlay -->
+        <div class="scan-progress-overlay hidden" id="scan-progress-overlay">
+            <div class="scan-progress-card">
+                <div class="scan-progress-header">
+                    <i class="fa-solid fa-microchip"></i>
+                    <h3 id="progress-modal-title">Đang Xử Lý Pipeline Local (GPU/CPU)</h3>
+                </div>
+                <div class="scan-progress-stats">
+                    <span id="scan-stat-time">00:00 / 00:00</span>
+                    <span id="scan-stat-found"><i class="fa-solid fa-comment"></i> 0 bong bóng</span>
+                </div>
+                <div class="scan-progress-bar-wrap">
+                    <div class="scan-progress-bar" id="scan-progress-bar" style="width: 0%;"></div>
+                </div>
+                <p id="scan-progress-status">Khởi tạo FFmpeg & Pipeline...</p>
+                <button id="btn-cancel-scan" class="btn btn-danger btn-sm"><i class="fa-solid fa-stop"></i> Dừng Quét</button>
+            </div>
+        </div>
+
+        <!-- Loader -->
+        <div class="loader-overlay hidden" id="loader">
+            <div class="spinner"></div>
+            <p id="loader-text">Đang xử lý...</p>
+        </div>
+    </div>
+
+    <script src="app.js" defer></script>
+</body>
+</html>

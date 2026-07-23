@@ -1,0 +1,18 @@
+# Build and local runtime artifacts
+build/bin/
+python_ocr/venv/
+
+# Video inputs and generated exports
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.webm
+video_translated_*.mp4
+
+# Local secrets and editor files
+.env
+.vscode/
+
+.ag-kit-backups/
+.agents/
