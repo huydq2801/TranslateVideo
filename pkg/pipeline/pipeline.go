@@ -28,6 +28,7 @@ func ExtractFramesWithFFmpeg(ctx context.Context, videoPath string, interval flo
 	filterStr := fmt.Sprintf("fps=1/%.3f", interval)
 
 	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-hwaccel", "auto", "-i", videoPath, "-vf", filterStr, "-q:v", "2", outPattern)
+	SetHideWindow(cmd)
 	if err := cmd.Run(); err != nil {
 		return 0, fmt.Errorf("lỗi trích xuất khung hình FFmpeg: %v", err)
 	}
@@ -174,6 +175,7 @@ func RefineStartBoundaryAccurate(ctx context.Context, videoPath string, d *confi
 	filterStr := fmt.Sprintf("crop=%d:%d:%d:%d,fps=30", int(d.BBox.Width), int(d.BBox.Height), max(0, int(d.BBox.X)), max(0, int(d.BBox.Y)))
 
 	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-ss", fmt.Sprintf("%.3f", winStart), "-i", videoPath, "-t", fmt.Sprintf("%.3f", dur), "-vf", filterStr, "-q:v", "2", outPattern)
+	SetHideWindow(cmd)
 	if err := cmd.Run(); err != nil {
 		return
 	}
@@ -213,6 +215,7 @@ func RefineEndBoundaryAccurate(ctx context.Context, videoPath string, d *config.
 	filterStr := fmt.Sprintf("crop=%d:%d:%d:%d,fps=30", int(d.BBox.Width), int(d.BBox.Height), max(0, int(d.BBox.X)), max(0, int(d.BBox.Y)))
 
 	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-ss", fmt.Sprintf("%.3f", winStart), "-i", videoPath, "-t", fmt.Sprintf("%.3f", dur), "-vf", filterStr, "-q:v", "2", outPattern)
+	SetHideWindow(cmd)
 	if err := cmd.Run(); err != nil {
 		return
 	}

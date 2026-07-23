@@ -223,6 +223,7 @@ func (a *App) SnapSingleDialogueBBox(videoPath string, dialogue config.DialogueI
 	}
 
 	cmd := exec.Command("ffmpeg", "-y", "-ss", fmt.Sprintf("%.3f", midTime), "-i", videoPath, "-vframes", "1", "-q:v", "2", framePath)
+	pipeline.SetHideWindow(cmd)
 	if err := cmd.Run(); err != nil {
 		return dialogue, fmt.Errorf("lỗi trích xuất frame: %v", err)
 	}

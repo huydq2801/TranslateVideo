@@ -358,9 +358,12 @@
         }
 
         try {
+            const selScanInterval = document.getElementById('sel-scan-interval');
+            const intervalVal = selScanInterval ? parseFloat(selScanInterval.value) : 0.30;
+
             const config = {
                 videoPath: currentVideoPath,
-                interval: 0.30,
+                interval: intervalVal,
                 threshold: 240,
                 sourceLang: 'chi_sim',
                 geminiKey: geminiKeyInput.value.trim()

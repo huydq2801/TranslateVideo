@@ -52,6 +52,13 @@
                 <div class="video-toolbar">
                     <div class="toolbar-group">
                         <button id="btn-select-video" class="btn btn-primary">📁 Chọn Video</button>
+                        <select id="sel-scan-interval" class="input-field" title="Tần suất quét khung hình" style="width: 170px;">
+                            <option value="0.15">Rất Tỉ Mỉ (0.15s / 6.7 FPS)</option>
+                            <option value="0.20">Tỉ Mỉ (0.20s / 5 FPS)</option>
+                            <option value="0.30" selected>Chuẩn (0.30s / 3.3 FPS)</option>
+                            <option value="0.50">Nhanh (0.50s / 2 FPS)</option>
+                            <option value="1.00">Siêu Nhanh (1.00s / 1 FPS)</option>
+                        </select>
                         <button id="btn-start-scan" class="btn btn-emerald" disabled>⚡ Quét Thoại (Full-Frame)</button>
                         <button id="btn-filter-trash" class="btn" disabled>🧹 AI Lọc Rác</button>
                         <button id="btn-analyze-context" class="btn" disabled>🧠 AI Ngữ Cảnh & Xưng Hô</button>

@@ -16,6 +16,7 @@ import (
 
 func GetVideoDimensions(videoPath string) (int, int) {
 	cmd := exec.Command("ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", videoPath)
+	SetHideWindow(cmd)
 	out, err := cmd.Output()
 	if err == nil {
 		parts := strings.Split(strings.TrimSpace(string(out)), ",")
@@ -211,6 +212,7 @@ func ExportVideo(videoPath string, dialoguesJSON string, targetOutputPath string
 	for _, encoder := range gpuEncoders {
 		cmdArgs := append(args, "-c:v", encoder, "-preset", "fast", outputPath)
 		cmd := exec.Command("ffmpeg", cmdArgs...)
+		SetHideWindow(cmd)
 		outBytes, err := cmd.CombinedOutput()
 		if err == nil {
 			return outputPath, nil
