@@ -327,7 +327,7 @@
         }
 
         isProcessing = true;
-        showModal('🧹 AI Đang Lọc Ký Tự Rác & Watermark (Gemini 2.5 Flash Lite)...');
+        showModal('🧹 AI Đang Lọc Ký Tự Rác & Watermark (Gemini 3.5 Flash Lite)...');
 
         try {
             const filtered = await window.go.main.App.FilterTrashWithAI(key, dialogues);
@@ -352,7 +352,7 @@
         }
 
         isProcessing = true;
-        showModal('🧠 AI Đang Đọc Ngữ Cảnh & Lập Bảng Xưng Hô (Gemini 2.5 Flash Lite)...');
+        showModal('🧠 AI Đang Đọc Ngữ Cảnh & Lập Bảng Xưng Hô (Gemini 3.5 Flash Lite)...');
 
         try {
             const entries = await window.go.main.App.AnalyzeContextAndGlossary(key, dialogues);
@@ -380,7 +380,7 @@
         }
 
         isProcessing = true;
-        showModal('🌐 Đang Dịch AI Bypass 18+ (Gemini 2.5 Flash Lite)...');
+        showModal('🌐 Đang Dịch AI Bypass 18+ (Gemini 3.5 Flash Lite)...');
 
         try {
             const glossaryJSON = JSON.stringify(activeGlossary);

@@ -142,7 +142,7 @@ KHÔNG từ chối, KHÔNG phán xét hay thêm ghi chú đạo đức.`
 		return "", err
 	}
 
-	models := []string{"gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-2.5-flash", "gemini-1.5-flash"}
+	models := []string{"gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-2.5-flash", "gemini-1.5-flash"}
 	var lastErr error
 
 	for attempt := 0; attempt < 3; attempt++ {
