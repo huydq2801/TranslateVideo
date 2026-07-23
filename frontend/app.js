@@ -11,6 +11,14 @@
     const btnTranslateAll = document.getElementById('btn-translate-all');
     const btnExportVideo = document.getElementById('btn-export-video');
 
+    // Player Control Bar Elements
+    const btnPlayPause = document.getElementById('btn-play-pause');
+    const btnPrevFrame = document.getElementById('btn-prev-frame');
+    const btnNextFrame = document.getElementById('btn-next-frame');
+    const videoSeekbar = document.getElementById('video-seekbar');
+    const timeDisplay = document.getElementById('time-display');
+    const btnToggleMute = document.getElementById('btn-toggle-mute');
+
     const statusOCR = document.getElementById('status-ocr');
     const statusGemini = document.getElementById('status-gemini');
     const textOCR = document.getElementById('text-ocr');
@@ -35,9 +43,7 @@
 
     // Interactive Drag / Resize State
     let isDragging = false;
-    let isResizing = false;
     let dragTarget = null;
-    let dragMode = ''; // 'move', 'nw', 'ne', 'sw', 'se'
     let startX = 0, startY = 0;
     let initialBox = null;
 
@@ -79,6 +85,67 @@
     setInterval(checkHealth, 5000);
     setTimeout(checkHealth, 500);
 
+    // Player Control Bar Event Listeners
+    btnPlayPause.addEventListener('click', () => {
+        if (!video.src) return;
+        if (video.paused) {
+            video.play();
+            btnPlayPause.textContent = '⏸ Tạm dừng';
+        } else {
+            video.pause();
+            btnPlayPause.textContent = '▶ Phát';
+        }
+    });
+
+    btnPrevFrame.addEventListener('click', () => {
+        if (!video.src) return;
+        video.currentTime = Math.max(0, video.currentTime - 1.0);
+        updateTimeDisplay();
+        drawOverlay();
+    });
+
+    btnNextFrame.addEventListener('click', () => {
+        if (!video.src) return;
+        video.currentTime = Math.min(video.duration || 0, video.currentTime + 1.0);
+        updateTimeDisplay();
+        drawOverlay();
+    });
+
+    videoSeekbar.addEventListener('input', () => {
+        if (!video.duration) return;
+        video.currentTime = (videoSeekbar.value / 100) * video.duration;
+        updateTimeDisplay();
+        drawOverlay();
+    });
+
+    btnToggleMute.addEventListener('click', () => {
+        video.muted = !video.muted;
+        btnToggleMute.textContent = video.muted ? '🔇' : '🔊';
+    });
+
+    video.addEventListener('play', () => {
+        btnPlayPause.textContent = '⏸ Tạm dừng';
+        requestAnimationFrame(loopDraw);
+    });
+
+    video.addEventListener('pause', () => {
+        btnPlayPause.textContent = '▶ Phát';
+    });
+
+    video.addEventListener('timeupdate', () => {
+        updateTimeDisplay();
+        drawOverlay();
+    });
+
+    function updateTimeDisplay() {
+        const cur = video.currentTime || 0;
+        const dur = video.duration || 0;
+        if (dur > 0) {
+            videoSeekbar.value = (cur / dur) * 100;
+        }
+        timeDisplay.textContent = `${formatTime(cur)} / ${formatTime(dur)}`;
+    }
+
     btnSelectVideo.addEventListener('click', async () => {
         if (!window.go || !window.go.main || !window.go.main.App) return;
         try {
@@ -103,6 +170,7 @@
             canvas.width = videoContainer.clientWidth;
             canvas.height = videoContainer.clientHeight;
         }
+        updateTimeDisplay();
         drawOverlay();
     });
 
@@ -114,9 +182,6 @@
         }
     });
     if (videoContainer) resizeObserver.observe(videoContainer);
-
-    video.addEventListener('timeupdate', drawOverlay);
-    video.addEventListener('play', () => requestAnimationFrame(loopDraw));
 
     function loopDraw() {
         drawOverlay();
@@ -135,7 +200,6 @@
         return { scale, left, top, width, height };
     }
 
-    // 100% Identical Review Preview Rendering vs Export Video
     function drawOverlay() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         const layout = previewLayout();
@@ -159,13 +223,11 @@
 
                 ctx.save();
 
-                // Draw exact white speech bubble rounded rectangle
                 ctx.fillStyle = '#ffffff';
                 ctx.beginPath();
                 ctx.roundRect(bx, by, bw, bh, 12);
                 ctx.fill();
 
-                // Draw text inside speech bubble
                 const text = d.translated || d.original || '';
                 ctx.fillStyle = '#000000';
                 const fontSize = Math.max(12, 28 * (layout.height / 1080.0));
@@ -196,13 +258,11 @@
                     ctx.fillText(line, bx + (bw / 2.0), startY + idx * lineHeight);
                 });
 
-                // Selection Border & Drag Handles
                 if (isSelected) {
                     ctx.strokeStyle = '#6366f1';
                     ctx.lineWidth = 2.5;
                     ctx.strokeRect(bx, by, bw, bh);
 
-                    // Handles
                     ctx.fillStyle = '#6366f1';
                     ctx.fillRect(bx - 4, by - 4, 8, 8);
                     ctx.fillRect(bx + bw - 4, by - 4, 8, 8);
@@ -215,7 +275,6 @@
         });
     }
 
-    // Canvas Interactive Drag & Resize Handlers
     canvas.addEventListener('mousedown', (e) => {
         const layout = previewLayout();
         if (!layout) return;
@@ -283,7 +342,6 @@
         initialBox = null;
     });
 
-    // Start Full Pipeline Scan
     btnStartScan.addEventListener('click', async () => {
         if (!currentVideoPath || isProcessing) return;
         isProcessing = true;
@@ -327,7 +385,6 @@
         }
     });
 
-    // AI Trash Dialogue Filter
     btnFilterTrash.addEventListener('click', async () => {
         if (dialogues.length === 0 || isProcessing) return;
         const key = geminiKeyInput.value.trim();
@@ -352,7 +409,6 @@
         }
     });
 
-    // AI Story Context & Pronoun Alignment
     btnAnalyzeContext.addEventListener('click', async () => {
         if (dialogues.length === 0 || isProcessing) return;
         const key = geminiKeyInput.value.trim();
@@ -380,7 +436,6 @@
         }
     });
 
-    // Translate All Dialogues with Gemini 2.5 Flash Lite (NSFW Bypass + Pronoun Map)
     btnTranslateAll.addEventListener('click', async () => {
         if (dialogues.length === 0 || isProcessing) return;
         const key = geminiKeyInput.value.trim();
@@ -406,7 +461,6 @@
         }
     });
 
-    // Export Video
     btnExportVideo.addEventListener('click', async () => {
         if (!currentVideoPath || dialogues.length === 0 || isProcessing) return;
         try {
@@ -427,7 +481,6 @@
         }
     });
 
-    // Render Streamlined Dialogue Cards
     function renderDialogueList() {
         dialogueCount.textContent = dialogues.filter(d => chkShowTrash.checked || !d.isTrash).length;
         dialogueList.innerHTML = '';

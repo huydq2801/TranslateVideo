@@ -139,6 +139,31 @@ header.header-nav {
     pointer-events: auto;
 }
 
+.player-control-bar {
+    height: 46px;
+    padding: 0 16px;
+    background: #121522;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.seekbar-input {
+    flex: 1;
+    height: 6px;
+    accent-color: var(--accent-indigo);
+    cursor: pointer;
+}
+
+.time-display-text {
+    font-family: monospace;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    min-width: 130px;
+    text-align: center;
+}
+
 .video-toolbar {
     height: 60px;
     padding: 0 16px;
