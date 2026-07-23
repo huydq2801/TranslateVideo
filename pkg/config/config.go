@@ -29,6 +29,11 @@ type DialogueItem struct {
 	BBox              BBox    `json:"bbox"`
 }
 
+type GlossaryEntry struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
+}
+
 type HealthStatus struct {
 	OCROnline bool   `json:"ocrOnline"`
 	OCREngine string `json:"ocrEngine"`

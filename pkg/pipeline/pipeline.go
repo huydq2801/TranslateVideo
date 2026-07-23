@@ -156,6 +156,86 @@ func ClusterFrameTimestamps(candidates []config.CandidateItem, sampleInterval fl
 	return dialogues
 }
 
+func RefineStartBoundaryAccurate(ctx context.Context, videoPath string, d *config.DialogueItem, sampleInterval float64, tempDir string) {
+	winStart := math.Max(0.0, d.Timestamp-sampleInterval)
+	winEnd := d.Timestamp + 0.15
+	if winEnd-winStart <= 0.03 {
+		return
+	}
+
+	startTempDir, err := os.MkdirTemp(tempDir, "refine_start_*")
+	if err != nil {
+		return
+	}
+	defer os.RemoveAll(startTempDir)
+
+	dur := winEnd - winStart
+	outPattern := filepath.Join(startTempDir, "f_%03d.jpg")
+	filterStr := fmt.Sprintf("crop=%d:%d:%d:%d,fps=30", int(d.BBox.Width), int(d.BBox.Height), max(0, int(d.BBox.X)), max(0, int(d.BBox.Y)))
+
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-ss", fmt.Sprintf("%.3f", winStart), "-i", videoPath, "-t", fmt.Sprintf("%.3f", dur), "-vf", filterStr, "-q:v", "2", outPattern)
+	if err := cmd.Run(); err != nil {
+		return
+	}
+
+	files, _ := filepath.Glob(filepath.Join(startTempDir, "f_*.jpg"))
+	if len(files) == 0 {
+		return
+	}
+	sort.Strings(files)
+
+	resMap, err := ocr.CallPythonOCRFullFrameBatch(ctx, files, "chi_sim")
+	if err == nil {
+		for idx, fPath := range files {
+			if items, ok := resMap[fPath]; ok && len(items) > 0 {
+				d.Timestamp = winStart + float64(idx)/30.0
+				break
+			}
+		}
+	}
+}
+
+func RefineEndBoundaryAccurate(ctx context.Context, videoPath string, d *config.DialogueItem, sampleInterval float64, tempDir string) {
+	winStart := math.Max(d.Timestamp, d.EndTimestamp-sampleInterval)
+	winEnd := d.EndTimestamp + sampleInterval
+	if winEnd-winStart <= 0.03 {
+		return
+	}
+
+	endTempDir, err := os.MkdirTemp(tempDir, "refine_end_*")
+	if err != nil {
+		return
+	}
+	defer os.RemoveAll(endTempDir)
+
+	dur := winEnd - winStart
+	outPattern := filepath.Join(endTempDir, "f_%03d.jpg")
+	filterStr := fmt.Sprintf("crop=%d:%d:%d:%d,fps=30", int(d.BBox.Width), int(d.BBox.Height), max(0, int(d.BBox.X)), max(0, int(d.BBox.Y)))
+
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-ss", fmt.Sprintf("%.3f", winStart), "-i", videoPath, "-t", fmt.Sprintf("%.3f", dur), "-vf", filterStr, "-q:v", "2", outPattern)
+	if err := cmd.Run(); err != nil {
+		return
+	}
+
+	files, _ := filepath.Glob(filepath.Join(endTempDir, "f_*.jpg"))
+	if len(files) == 0 {
+		return
+	}
+	sort.Strings(files)
+
+	resMap, err := ocr.CallPythonOCRFullFrameBatch(ctx, files, "chi_sim")
+	if err == nil {
+		for idx := len(files) - 1; idx >= 0; idx-- {
+			fPath := files[idx]
+			if items, ok := resMap[fPath]; ok && len(items) > 0 {
+				d.EndTimestamp = winStart + float64(idx)/30.0
+				d.Duration = math.Max(0.2, d.EndTimestamp-d.Timestamp)
+				break
+			}
+		}
+	}
+}
+
 func ScanFullFramePipeline(ctx context.Context, cfg config.ScanConfig, onProgress ProgressCallback) ([]config.DialogueItem, error) {
 	if cfg.VideoPath == "" {
 		return nil, fmt.Errorf("chưa chọn file video")
@@ -245,6 +325,15 @@ func ScanFullFramePipeline(ctx context.Context, cfg config.ScanConfig, onProgres
 	}
 
 	dialogues := ClusterFrameTimestamps(candidates, cfg.Interval)
+
+	if onProgress != nil {
+		onProgress(totalFrames, totalFrames, len(dialogues), "[2/2] Tinh chỉnh mốc thời gian 30 FPS...")
+	}
+
+	for i := range dialogues {
+		RefineStartBoundaryAccurate(ctx, cfg.VideoPath, &dialogues[i], cfg.Interval, tempDir)
+		RefineEndBoundaryAccurate(ctx, cfg.VideoPath, &dialogues[i], cfg.Interval, tempDir)
+	}
 
 	sort.Slice(dialogues, func(i, j int) bool {
 		return dialogues[i].Timestamp < dialogues[j].Timestamp

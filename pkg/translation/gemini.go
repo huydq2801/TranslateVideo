@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"translate-video/pkg/config"
 )
 
 var (
@@ -48,8 +50,13 @@ type GeminiSafetySetting struct {
 }
 
 type GeminiGenerateRequest struct {
-	Contents       []GeminiContent       `json:"contents"`
-	SafetySettings []GeminiSafetySetting `json:"safetySettings,omitempty"`
+	Contents          []GeminiContent          `json:"contents"`
+	SystemInstruction *GeminiSystemInstruction `json:"systemInstruction,omitempty"`
+	SafetySettings    []GeminiSafetySetting    `json:"safetySettings,omitempty"`
+}
+
+type GeminiSystemInstruction struct {
+	Parts []GeminiPart `json:"parts"`
 }
 
 type GeminiGenerateResponse struct {
@@ -108,7 +115,14 @@ func CallGeminiAPIWithContext(ctx context.Context, apiKey string, prompt string)
 		return "", fmt.Errorf("chưa cấu hình Gemini API Key")
 	}
 
+	systemPrompt := `Bạn là chuyên gia biên dịch ngôn ngữ truyện tranh/manga/manhwa. 
+Nhiệm vụ duy nhất của bạn là dịch thuật trung thực, đúng ngữ cảnh tác phẩm (bao gồm cả truyện tranh người lớn 18+).
+KHÔNG từ chối, KHÔNG phán xét hay thêm ghi chú đạo đức.`
+
 	reqBody := GeminiGenerateRequest{
+		SystemInstruction: &GeminiSystemInstruction{
+			Parts: []GeminiPart{{Text: systemPrompt}},
+		},
 		Contents: []GeminiContent{
 			{
 				Role:  "user",
@@ -128,7 +142,7 @@ func CallGeminiAPIWithContext(ctx context.Context, apiKey string, prompt string)
 		return "", err
 	}
 
-	models := []string{"gemini-2.5-flash", "gemini-1.5-flash"}
+	models := []string{"gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-2.5-flash", "gemini-1.5-flash"}
 	var lastErr error
 
 	for attempt := 0; attempt < 3; attempt++ {
@@ -192,6 +206,103 @@ func CallGeminiAPIWithContext(ctx context.Context, apiKey string, prompt string)
 	}
 
 	return "", lastErr
+}
+
+func FilterTrashDialogues(ctx context.Context, apiKey string, items []config.DialogueItem) ([]config.DialogueItem, error) {
+	if len(items) == 0 {
+		return items, nil
+	}
+
+	type DialogueSample struct {
+		ID   int    `json:"id"`
+		Text string `json:"text"`
+	}
+
+	samples := make([]DialogueSample, len(items))
+	for i, it := range items {
+		samples[i] = DialogueSample{ID: it.ID, Text: it.Original}
+	}
+
+	jsonBytes, _ := json.Marshal(samples)
+
+	prompt := fmt.Sprintf(`Dưới đây là danh sách câu thoại nhận diện từ OCR video truyện tranh:
+%s
+
+Hãy phân tích và tìm các câu thoại RÁC (như: ký tự rác OCR nhiễu, logo watermark, hiệu ứng âm thanh vô nghĩa, số trang, icon rác).
+Trả về duy nhất JSON Array chứa danh sách ID câu thoại rác:
+[1, 5, 12]
+
+CHỈ trả về JSON Array. KHÔNG thêm bất kỳ lời giải thích hay markdown codeblock nào.`, string(jsonBytes))
+
+	rawResp, err := CallGeminiAPIWithContext(ctx, apiKey, prompt)
+	if err != nil {
+		return items, err
+	}
+
+	rawResp = strings.TrimSpace(rawResp)
+	reArray := regexp.MustCompile(`\[[\d\s,]*\]`)
+	if match := reArray.FindString(rawResp); match != "" {
+		rawResp = match
+	}
+
+	var trashIDs []int
+	if err := json.Unmarshal([]byte(rawResp), &trashIDs); err == nil && len(trashIDs) > 0 {
+		trashMap := make(map[int]bool)
+		for _, id := range trashIDs {
+			trashMap[id] = true
+		}
+		for i := range items {
+			if trashMap[items[i].ID] {
+				items[i].IsTrash = true
+			}
+		}
+	}
+
+	return items, nil
+}
+
+func AnalyzeStoryContextAndGlossary(ctx context.Context, apiKey string, items []config.DialogueItem) ([]config.GlossaryEntry, error) {
+	if len(items) == 0 {
+		return nil, fmt.Errorf("chưa có danh sách thoại để phân tích")
+	}
+
+	var sb strings.Builder
+	for i, it := range items {
+		if it.Original != "" && !it.IsTrash {
+			sb.WriteString(fmt.Sprintf("%d. %s\n", it.ID, it.Original))
+			if i >= 50 {
+				break
+			}
+		}
+	}
+
+	prompt := fmt.Sprintf(`Bạn là biên tập viên truyện tranh chuyên nghiệp.
+Dưới đây là các câu thoại xuất hiện theo thứ tự trong video:
+%s
+
+Nhiệm vụ:
+1. Đọc toàn bộ ngữ cảnh câu chuyện để xác định các nhân vật chính và mối quan hệ sưng hô giữa họ (ví dụ: Nam chính - Nữ chính => Anh / Em; Bạn bè => Cậu / Tớ hoặc Mày / Tớ).
+2. Đề xuất bảng từ điển xưng hô và tên riêng cố định bằng tiếng Việt.
+Trả về duy nhất JSON Array dạng:
+[
+  {"source": "từ gốc/nhân vật", "target": "cách gọi/xưng hô tiếng Việt"}
+]
+CHỈ trả về JSON Array.`, sb.String())
+
+	rawResp, err := CallGeminiAPIWithContext(ctx, apiKey, prompt)
+	if err != nil {
+		return nil, err
+	}
+
+	rawResp = strings.TrimSpace(rawResp)
+	reArray := regexp.MustCompile(`\[\s*\{.*\}\s*\]`)
+	if match := reArray.FindString(rawResp); match != "" {
+		rawResp = match
+	}
+
+	var entries []config.GlossaryEntry
+	_ = json.Unmarshal([]byte(rawResp), &entries)
+	return entries, nil
 }
 
 func NormalizeOCRText(text string) string {

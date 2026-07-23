@@ -6,6 +6,8 @@
 
     const btnSelectVideo = document.getElementById('btn-select-video');
     const btnStartScan = document.getElementById('btn-start-scan');
+    const btnFilterTrash = document.getElementById('btn-filter-trash');
+    const btnAnalyzeContext = document.getElementById('btn-analyze-context');
     const btnTranslateAll = document.getElementById('btn-translate-all');
     const btnExportVideo = document.getElementById('btn-export-video');
 
@@ -29,6 +31,15 @@
     let dialogues = [];
     let selectedDialogueId = null;
     let isProcessing = false;
+    let activeGlossary = [];
+
+    // Interactive Drag / Resize State
+    let isDragging = false;
+    let isResizing = false;
+    let dragTarget = null;
+    let dragMode = ''; // 'move', 'nw', 'ne', 'sw', 'se'
+    let startX = 0, startY = 0;
+    let initialBox = null;
 
     const savedKey = localStorage.getItem('gemini_api_key') || '';
     if (savedKey) {
@@ -114,6 +125,7 @@
         return { scale, left, top, width, height };
     }
 
+    // 100% Identical Review Preview Rendering vs Export Video
     function drawOverlay() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         const layout = previewLayout();
@@ -136,34 +148,136 @@
                 const bh = d.bbox.height * layout.scale;
 
                 ctx.save();
+
+                // Draw exact white speech bubble rounded rectangle
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.roundRect(bx, by, bw, bh, 12);
+                ctx.fill();
+
+                // Draw text inside speech bubble
+                const text = d.translated || d.original || '';
+                ctx.fillStyle = '#000000';
+                const fontSize = Math.max(12, 28 * (layout.height / 1080.0));
+                ctx.font = `bold ${fontSize}px sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                const words = text.split(/\s+/);
+                let lines = [];
+                let currentLine = '';
+                const maxWidth = bw * 0.85;
+
+                words.forEach(w => {
+                    const testLine = currentLine ? `${currentLine} ${w}` : w;
+                    if (ctx.measureText(testLine).width > maxWidth && currentLine) {
+                        lines.push(currentLine);
+                        currentLine = w;
+                    } else {
+                        currentLine = testLine;
+                    }
+                });
+                if (currentLine) lines.push(currentLine);
+
+                const lineHeight = fontSize * 1.3;
+                const startY = by + (bh / 2.0) - ((lines.length - 1) * lineHeight / 2.0);
+
+                lines.forEach((line, idx) => {
+                    ctx.fillText(line, bx + (bw / 2.0), startY + idx * lineHeight);
+                });
+
+                // Selection Border & Drag Handles
                 if (isSelected) {
                     ctx.strokeStyle = '#6366f1';
                     ctx.lineWidth = 2.5;
-                    ctx.fillStyle = 'rgba(99, 102, 241, 0.15)';
-                } else {
-                    ctx.strokeStyle = '#10b981';
-                    ctx.lineWidth = 1.5;
-                    ctx.fillStyle = 'rgba(16, 185, 129, 0.10)';
+                    ctx.strokeRect(bx, by, bw, bh);
+
+                    // Handles
+                    ctx.fillStyle = '#6366f1';
+                    ctx.fillRect(bx - 4, by - 4, 8, 8);
+                    ctx.fillRect(bx + bw - 4, by - 4, 8, 8);
+                    ctx.fillRect(bx - 4, by + bh - 4, 8, 8);
+                    ctx.fillRect(bx + bw - 4, by + bh - 4, 8, 8);
                 }
-
-                ctx.fillRect(bx, by, bw, bh);
-                ctx.strokeRect(bx, by, bw, bh);
-
-                ctx.fillStyle = isSelected ? '#6366f1' : '#10b981';
-                ctx.fillRect(bx, by - 20, 40, 20);
-                ctx.fillStyle = '#ffffff';
-                ctx.font = 'bold 11px sans-serif';
-                ctx.fillText(`#${d.id}`, bx + 6, by - 6);
 
                 ctx.restore();
             }
         });
     }
 
+    // Canvas Interactive Drag & Resize Handlers
+    canvas.addEventListener('mousedown', (e) => {
+        const layout = previewLayout();
+        if (!layout) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+
+        const currentTime = video.currentTime || 0;
+        let clickedDialogue = null;
+
+        for (let i = dialogues.length - 1; i >= 0; i--) {
+            const d = dialogues[i];
+            if (!chkShowTrash.checked && d.isTrash) continue;
+
+            const end = d.endTimestamp && d.endTimestamp > d.timestamp ? d.endTimestamp : (d.timestamp + (d.duration || 1.2));
+            const isCurrent = (currentTime >= d.timestamp && currentTime <= end);
+            const isSelected = (d.id === selectedDialogueId);
+
+            if (isCurrent || isSelected) {
+                const bx = layout.left + d.bbox.x * layout.scale;
+                const by = layout.top + d.bbox.y * layout.scale;
+                const bw = d.bbox.width * layout.scale;
+                const bh = d.bbox.height * layout.scale;
+
+                if (mx >= bx && mx <= bx + bw && my >= by && my <= by + bh) {
+                    clickedDialogue = d;
+                    break;
+                }
+            }
+        }
+
+        if (clickedDialogue) {
+            selectedDialogueId = clickedDialogue.id;
+            isDragging = true;
+            dragTarget = clickedDialogue;
+            startX = mx;
+            startY = my;
+            initialBox = { ...clickedDialogue.bbox };
+            renderDialogueList();
+            drawOverlay();
+        }
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+        if (!isDragging || !dragTarget || !initialBox) return;
+        const layout = previewLayout();
+        if (!layout) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+
+        const dx = (mx - startX) / layout.scale;
+        const dy = (my - startY) / layout.scale;
+
+        dragTarget.bbox.x = Math.max(0, initialBox.x + dx);
+        dragTarget.bbox.y = Math.max(0, initialBox.y + dy);
+        drawOverlay();
+    });
+
+    window.addEventListener('mouseup', () => {
+        isDragging = false;
+        dragTarget = null;
+        initialBox = null;
+    });
+
+    // Start Full Pipeline Scan
     btnStartScan.addEventListener('click', async () => {
         if (!currentVideoPath || isProcessing) return;
         isProcessing = true;
-        showModal('⚡ Đang Quét Thoại (Full-Frame)...');
+        showModal('⚡ Đang Quét Thoại (Full-Frame + Tinh Chỉnh 30 FPS)...');
 
         if (window.runtime) {
             window.runtime.EventsOn('scan-progress', (p) => {
@@ -190,6 +304,8 @@
             drawOverlay();
 
             if (dialogues.length > 0) {
+                btnFilterTrash.disabled = false;
+                btnAnalyzeContext.disabled = false;
                 btnTranslateAll.disabled = false;
                 btnExportVideo.disabled = false;
             }
@@ -201,6 +317,60 @@
         }
     });
 
+    // AI Trash Dialogue Filter
+    btnFilterTrash.addEventListener('click', async () => {
+        if (dialogues.length === 0 || isProcessing) return;
+        const key = geminiKeyInput.value.trim();
+        if (!key) {
+            alert('Vui lòng nhập Gemini API Key ở thanh tiêu đề!');
+            return;
+        }
+
+        isProcessing = true;
+        showModal('🧹 AI Đang Lọc Ký Tự Rác & Watermark (Gemini 2.5 Flash Lite)...');
+
+        try {
+            const filtered = await window.go.main.App.FilterTrashWithAI(key, dialogues);
+            dialogues = filtered || dialogues;
+            renderDialogueList();
+            drawOverlay();
+        } catch (e) {
+            alert('Lỗi lọc rác AI: ' + e);
+        } finally {
+            isProcessing = false;
+            hideModal();
+        }
+    });
+
+    // AI Story Context & Pronoun Alignment
+    btnAnalyzeContext.addEventListener('click', async () => {
+        if (dialogues.length === 0 || isProcessing) return;
+        const key = geminiKeyInput.value.trim();
+        if (!key) {
+            alert('Vui lòng nhập Gemini API Key ở thanh tiêu đề!');
+            return;
+        }
+
+        isProcessing = true;
+        showModal('🧠 AI Đang Đọc Ngữ Cảnh & Lập Bảng Xưng Hô (Gemini 2.5 Flash Lite)...');
+
+        try {
+            const entries = await window.go.main.App.AnalyzeContextAndGlossary(key, dialogues);
+            activeGlossary = entries || [];
+            let msg = '🎉 Phân tích ngữ cảnh thành công!\nBảng xưng hô đề xuất:\n';
+            activeGlossary.forEach(e => {
+                msg += `- ${e.source} => ${e.target}\n`;
+            });
+            alert(msg);
+        } catch (e) {
+            alert('Lỗi phân tích ngữ cảnh AI: ' + e);
+        } finally {
+            isProcessing = false;
+            hideModal();
+        }
+    });
+
+    // Translate All Dialogues with Gemini 2.5 Flash Lite (NSFW Bypass + Pronoun Map)
     btnTranslateAll.addEventListener('click', async () => {
         if (dialogues.length === 0 || isProcessing) return;
         const key = geminiKeyInput.value.trim();
@@ -210,10 +380,11 @@
         }
 
         isProcessing = true;
-        showModal('🌐 Đang Dịch Tự Động Qua Gemini 2.5 Flash...');
+        showModal('🌐 Đang Dịch AI Bypass 18+ (Gemini 2.5 Flash Lite)...');
 
         try {
-            const translated = await window.go.main.App.TranslateDialogues(key, dialogues);
+            const glossaryJSON = JSON.stringify(activeGlossary);
+            const translated = await window.go.main.App.TranslateDialogues(key, dialogues, glossaryJSON);
             dialogues = translated || dialogues;
             renderDialogueList();
             drawOverlay();
@@ -225,6 +396,7 @@
         }
     });
 
+    // Export Video
     btnExportVideo.addEventListener('click', async () => {
         if (!currentVideoPath || dialogues.length === 0 || isProcessing) return;
         try {
@@ -245,6 +417,7 @@
         }
     });
 
+    // Render Streamlined Dialogue Cards
     function renderDialogueList() {
         dialogueCount.textContent = dialogues.filter(d => chkShowTrash.checked || !d.isTrash).length;
         dialogueList.innerHTML = '';

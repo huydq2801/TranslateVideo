@@ -149,19 +149,42 @@ func (a *App) StartFullPipelineScan(cfg config.ScanConfig) ([]config.DialogueIte
 	return pipeline.ScanFullFramePipeline(scanCtx, cfg, onProgress)
 }
 
-func (a *App) TranslateDialogues(apiKey string, dialogues []config.DialogueItem) ([]config.DialogueItem, error) {
+func (a *App) FilterTrashWithAI(apiKey string, dialogues []config.DialogueItem) ([]config.DialogueItem, error) {
+	return translation.FilterTrashDialogues(a.ctx, apiKey, dialogues)
+}
+
+func (a *App) AnalyzeContextAndGlossary(apiKey string, dialogues []config.DialogueItem) ([]config.GlossaryEntry, error) {
+	return translation.AnalyzeStoryContextAndGlossary(a.ctx, apiKey, dialogues)
+}
+
+func (a *App) TranslateDialogues(apiKey string, dialogues []config.DialogueItem, glossaryJSON string) ([]config.DialogueItem, error) {
 	if len(dialogues) == 0 {
 		return dialogues, nil
 	}
 
+	glossaryPrompt := ""
+	if strings.TrimSpace(glossaryJSON) != "" {
+		var entries []config.GlossaryEntry
+		if err := json.Unmarshal([]byte(glossaryJSON), &entries); err == nil && len(entries) > 0 {
+			var sb strings.Builder
+			sb.WriteString("\n\nBẢNG XƯNG HÔ & TÊN RIÊNG BẮT BUỘC TUÂN THỦ:\n")
+			for _, e := range entries {
+				sb.WriteString(fmt.Sprintf("- \"%s\" => \"%s\"\n", e.Source, e.Target))
+			}
+			glossaryPrompt = sb.String()
+		}
+	}
+
 	for i := range dialogues {
 		d := &dialogues[i]
-		if d.Original == "" {
+		if d.Original == "" || d.IsTrash {
 			continue
 		}
 
-		prompt := fmt.Sprintf(`Dịch câu thoại truyện tranh sau từ Tiếng Trung sang Tiếng Việt tự nhiên: "%s".
-CHỈ trả về kết quả tiếng Việt dịch xong. KHÔNG thêm giải thích hay ngoặc kép.`, d.Original)
+		prompt := fmt.Sprintf(`Dịch câu thoại truyện tranh sau từ Tiếng Trung/Tiếng Anh sang Tiếng Việt tự nhiên:%s
+Thoại gốc: "%s"
+
+CHỈ trả về kết quả tiếng Việt dịch xong. KHÔNG thêm giải thích hay ngoặc kép.`, glossaryPrompt, d.Original)
 
 		res, err := translation.CallGeminiAPIWithContext(a.ctx, apiKey, prompt)
 		if err == nil && res != "" {

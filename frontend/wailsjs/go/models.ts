@@ -66,6 +66,20 @@ export namespace config {
 		    return a;
 		}
 	}
+	export class GlossaryEntry {
+	    source: string;
+	    target: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GlossaryEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.target = source["target"];
+	    }
+	}
 	export class HealthStatus {
 	    ocrOnline: boolean;
 	    ocrEngine: string;
