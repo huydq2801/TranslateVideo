@@ -423,7 +423,7 @@ func ScanFullFramePipeline(ctx context.Context, cfg config.ScanConfig, onProgres
 		}
 	}
 
-	batchSize := 200
+	batchSize := 150
 	var candidates []config.CandidateItem
 	consecutiveErrors := 0
 
@@ -439,6 +439,11 @@ func ScanFullFramePipeline(ctx context.Context, cfg config.ScanConfig, onProgres
 			end = len(files)
 		}
 		subPaths := files[i:end]
+
+		if onProgress != nil {
+			pct := math.Min(99, math.Round((float64(i)/float64(totalFrames))*100))
+			onProgress(i, totalFrames, len(candidates), fmt.Sprintf("[2/2] Đang nhận diện OCR: %d/%d khung hình (%.0f%% - tìm thấy %d thoại)...", i, totalFrames, pct, len(candidates)))
+		}
 
 		resMap, ocrErr := ocr.CallPythonOCRFullFrameBatch(ctx, subPaths, sourceLang)
 		if ocrErr != nil {
@@ -486,7 +491,7 @@ func ScanFullFramePipeline(ctx context.Context, cfg config.ScanConfig, onProgres
 
 		if onProgress != nil {
 			pct := math.Min(99, math.Round((float64(end)/float64(totalFrames))*100))
-			onProgress(end, totalFrames, len(candidates), fmt.Sprintf("[1/2] Quét DirectML GPU OCR: %d/%d khung hình (%.0f%% - tìm thấy %d thoại)...", end, totalFrames, pct, len(candidates)))
+			onProgress(end, totalFrames, len(candidates), fmt.Sprintf("[2/2] Đang nhận diện OCR: %d/%d khung hình (%.0f%% - tìm thấy %d thoại)...", end, totalFrames, pct, len(candidates)))
 		}
 	}
 	if len(candidates) == 0 {
