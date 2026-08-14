@@ -158,7 +158,7 @@ func ClusterFrameTimestamps(candidates []config.CandidateItem, sampleInterval fl
 		return candidates[i].TimeSec < candidates[j].TimeSec
 	})
 
-	const maxGapTolerance = 0.60
+	maxGapTolerance := math.Max(0.60, sampleInterval*1.5)
 
 	type Cluster struct {
 		Candidates []config.CandidateItem
@@ -207,11 +207,15 @@ func ClusterFrameTimestamps(candidates []config.CandidateItem, sampleInterval fl
 	var dialogues []config.DialogueItem
 	for idx, cls := range clusters {
 		var sumX, sumY, sumW, sumH float64
+		bestText := cls.Candidates[0].Original
 		for _, c := range cls.Candidates {
 			sumX += c.BBox.X
 			sumY += c.BBox.Y
 			sumW += c.BBox.Width
 			sumH += c.BBox.Height
+			if len(c.Original) > len(bestText) {
+				bestText = c.Original
+			}
 		}
 		n := float64(len(cls.Candidates))
 		avgBBox := config.BBox{
@@ -241,9 +245,9 @@ func ClusterFrameTimestamps(candidates []config.CandidateItem, sampleInterval fl
 			Timestamp:    startTime,
 			EndTimestamp: endTime,
 			Duration:     duration,
-			Original:     cls.Candidates[0].Original,
+			Original:     bestText,
 			BBox:         expandedBBox,
-			IsTrash:      translation.HeuristicIsTrash(cls.Candidates[0].Original),
+			IsTrash:      translation.HeuristicIsTrash(bestText),
 		})
 	}
 

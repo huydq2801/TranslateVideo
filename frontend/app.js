@@ -601,11 +601,14 @@
 
     if (selVideoType && selSubtitleStyle) {
         selVideoType.addEventListener('change', () => {
+            const selScanInterval = document.getElementById('sel-scan-interval');
             if (selVideoType.value === 'sims_en') {
                 selSubtitleStyle.value = 'sims_bar';
+                if (selScanInterval) selScanInterval.value = '0.50';
                 currentContextConfig.presetStyle = 'hien_dai';
             } else {
                 selSubtitleStyle.value = 'bubble';
+                if (selScanInterval) selScanInterval.value = '0.30';
                 currentContextConfig.presetStyle = 'ngon_tinh';
             }
             drawOverlay();

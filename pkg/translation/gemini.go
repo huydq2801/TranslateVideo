@@ -44,6 +44,7 @@ var (
 	reArrayInts    = regexp.MustCompile(`\[[\d\s,]*\]`)
 	reArrayObjects = regexp.MustCompile(`\[\s*\{.*\}\s*\]`)
 	reNotesBracket = regexp.MustCompile(`[\(\[\{（【]\s*(?:Ghi chú|Lưu ý|Note|注|Chú thích|Nghĩa là|Dịch là|Explanation).*?[\)\]\}）】]`)
+	reTimestamp    = regexp.MustCompile(`(?i)^\s*"?(\d{1,2}:)?\d{1,2}:\d{2}(\.\d+)?"?\s*$`)
 )
 
 func TriggerGeminiRateLimitCooldown(delay time.Duration) {
@@ -488,6 +489,10 @@ func HeuristicIsTrash(text string) bool {
 
 	norm := NormalizeOCRText(t)
 	if len(norm) == 0 {
+		return true
+	}
+
+	if reTimestamp.MatchString(t) || reTimestamp.MatchString(norm) {
 		return true
 	}
 
