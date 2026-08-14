@@ -263,10 +263,11 @@ func FormatSRTTimestamp(seconds float64) string {
 	if seconds < 0 {
 		seconds = 0
 	}
-	h := int(seconds) / 3600
-	m := (int(seconds) % 3600) / 60
-	s := int(seconds) % 60
-	ms := int((seconds - float64(int(seconds))) * 1000)
+	totalMs := int(math.Round(seconds * 1000))
+	h := totalMs / (3600 * 1000)
+	m := (totalMs % (3600 * 1000)) / (60 * 1000)
+	s := (totalMs % (60 * 1000)) / 1000
+	ms := totalMs % 1000
 	return fmt.Sprintf("%02d:%02d:%02d,%03d", h, m, s, ms)
 }
 
