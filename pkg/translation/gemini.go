@@ -122,11 +122,11 @@ func GeminiRetryDelay(retryAfterHeader string, attempt int) time.Duration {
 			return time.Duration(seconds) * time.Second
 		}
 	}
-	fallbacks := []time.Duration{3 * time.Second, 5 * time.Second, 8 * time.Second}
+	fallbacks := []time.Duration{15 * time.Second, 25 * time.Second, 35 * time.Second}
 	if attempt < len(fallbacks) {
 		return fallbacks[attempt]
 	}
-	return 8 * time.Second
+	return 35 * time.Second
 }
 
 func CallGeminiAPIWithCustomSystem(ctx context.Context, apiKey string, prompt string, systemPrompt string) (string, error) {
@@ -904,22 +904,31 @@ func TranslateDialoguesBatch(ctx context.Context, apiKey string, dialogues []con
 		return dialogues, nil
 	}
 
+	alreadyTranslatedCount := 0
 	var activeIndices []int
 	for i, d := range dialogues {
 		if d.Original != "" && !d.IsTrash {
-			activeIndices = append(activeIndices, i)
+			if d.Translated != "" && !d.TranslationFailed {
+				alreadyTranslatedCount++
+			} else {
+				activeIndices = append(activeIndices, i)
+			}
 		}
 	}
 
-	totalActive := len(activeIndices)
-	if totalActive == 0 {
+	totalToTranslate := len(activeIndices)
+	totalActive := alreadyTranslatedCount + totalToTranslate
+	if totalToTranslate == 0 {
+		if onProgress != nil {
+			onProgress(totalActive, totalActive, "✅ Tất cả các câu thoại đã được dịch hoàn tất!")
+		}
 		return dialogues, nil
 	}
 
-	batchSize := 8
-	translatedCount := 0
+	batchSize := 35
+	translatedCount := alreadyTranslatedCount
 
-	for i := 0; i < totalActive; i += batchSize {
+	for i := 0; i < len(activeIndices); i += batchSize {
 		select {
 		case <-ctx.Done():
 			return dialogues, ctx.Err()
@@ -927,32 +936,27 @@ func TranslateDialoguesBatch(ctx context.Context, apiKey string, dialogues []con
 		}
 
 		end := i + batchSize
-		if end > totalActive {
-			end = totalActive
+		if end > len(activeIndices) {
+			end = len(activeIndices)
 		}
 		subIndices := activeIndices[i:end]
 
 		// Build sliding window of recent preceding dialogues for continuous conversation context
 		recentHistoryPrompt := ""
-		if i > 0 {
-			var historySb strings.Builder
-			historySb.WriteString("\n\nRECENT CONVERSATION HISTORY & PREVIOUS LINES (CÁC CÂU THOẠI NGAY TRƯỚC ĐÓ ĐỂ THEO DÕI MẠCH TRUYỆN, NGƯỜI NÓI & XƯNG HÔ):\n")
-			startHist := i - 6
-			if startHist < 0 {
-				startHist = 0
-			}
-			for hIdx := startHist; hIdx < i; hIdx++ {
-				hItemIdx := activeIndices[hIdx]
-				orig := dialogues[hItemIdx].Original
-				trans := dialogues[hItemIdx].Translated
-				if trans != "" {
-					historySb.WriteString(fmt.Sprintf("- [ID %d] Original: \"%s\" => Translated: \"%s\"\n", dialogues[hItemIdx].ID, orig, trans))
-				} else {
-					historySb.WriteString(fmt.Sprintf("- [ID %d] Original: \"%s\"\n", dialogues[hItemIdx].ID, orig))
-				}
-			}
-			recentHistoryPrompt = historySb.String()
+		startHist := subIndices[0] - 6
+		if startHist < 0 {
+			startHist = 0
 		}
+		var historySb strings.Builder
+		historySb.WriteString("\n\nRECENT CONVERSATION HISTORY & PREVIOUS LINES (CÁC CÂU THOẠI NGAY TRƯỚC ĐÓ ĐỂ THEO DÕI MẠCH TRUYỆN, NGƯỜI NÓI & XƯNG HÔ):\n")
+		for hIdx := startHist; hIdx < subIndices[0]; hIdx++ {
+			orig := dialogues[hIdx].Original
+			trans := dialogues[hIdx].Translated
+			if trans != "" && !dialogues[hIdx].IsTrash {
+				historySb.WriteString(fmt.Sprintf("- [ID %d] Original: \"%s\" => Translated: \"%s\"\n", dialogues[hIdx].ID, orig, trans))
+			}
+		}
+		recentHistoryPrompt = historySb.String()
 
 		var batchItems []BatchTranslationItem
 		for _, idx := range subIndices {
@@ -983,7 +987,8 @@ Return strictly a single raw JSON object mapping string dialogue IDs to their Vi
 Do NOT include any explanations, markdown code blocks, or text outside the JSON object.`, glossaryPrompt, recentHistoryPrompt, string(batchJSON))
 
 		if onProgress != nil {
-			onProgress(translatedCount, totalActive, fmt.Sprintf("🌐 Đang Dịch AI theo ngữ cảnh thoại: %d/%d thoại (%.0f%%)...", translatedCount, totalActive, float64(translatedCount)/float64(totalActive)*100))
+			pct := float64(translatedCount) / float64(totalActive) * 100
+			onProgress(translatedCount, totalActive, fmt.Sprintf("🌐 Đang Dịch AI theo ngữ cảnh thoại: %d/%d thoại (%.0f%%)...", translatedCount, totalActive, pct))
 		}
 
 		res, err := CallGeminiAPIWithContext(ctx, apiKey, prompt)
@@ -1013,38 +1018,16 @@ Do NOT include any explanations, markdown code blocks, or text outside the JSON 
 						cleaned, failed := CleanTranslation(transText)
 						dialogues[idx].Translated = cleaned
 						dialogues[idx].TranslationFailed = failed
-					} else {
-						singlePrompt := fmt.Sprintf(`Translate the following dialogue line into natural Vietnamese, maintaining exact pronoun and context consistency with previous lines.
-%s%s
-
-Dialogue line to translate: "%s"
-Return ONLY the Vietnamese translated text without explanations.`, glossaryPrompt, recentHistoryPrompt, dialogues[idx].Original)
-						singleRes, singleErr := CallGeminiAPIWithContext(ctx, apiKey, singlePrompt)
-						if singleErr == nil {
-							cleaned, failed := CleanTranslation(singleRes)
-							dialogues[idx].Translated = cleaned
-							dialogues[idx].TranslationFailed = failed
-						}
-					}
-				}
-			} else {
-				for _, idx := range subIndices {
-					singlePrompt := fmt.Sprintf(`Translate the following dialogue line into natural Vietnamese, maintaining exact pronoun and context consistency with previous lines.
-%s%s
-
-Dialogue line to translate: "%s"
-Return ONLY the Vietnamese translated text without explanations.`, glossaryPrompt, recentHistoryPrompt, dialogues[idx].Original)
-					singleRes, singleErr := CallGeminiAPIWithContext(ctx, apiKey, singlePrompt)
-					if singleErr == nil {
-						cleaned, failed := CleanTranslation(singleRes)
-						dialogues[idx].Translated = cleaned
-						dialogues[idx].TranslationFailed = failed
 					}
 				}
 			}
 		}
 
 		translatedCount += len(subIndices)
+		if onProgress != nil {
+			pct := float64(translatedCount) / float64(totalActive) * 100
+			onProgress(translatedCount, totalActive, fmt.Sprintf("🌐 Đang Dịch AI theo ngữ cảnh thoại: %d/%d thoại (%.0f%%)...", translatedCount, totalActive, pct))
+		}
 	}
 
 	return dialogues, nil
