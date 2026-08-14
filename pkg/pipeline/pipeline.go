@@ -443,7 +443,7 @@ func ScanFullFramePipeline(ctx context.Context, cfg config.ScanConfig, onProgres
 		resMap, ocrErr := ocr.CallPythonOCRFullFrameBatch(ctx, subPaths, sourceLang)
 		if ocrErr != nil {
 			consecutiveErrors++
-			if consecutiveErrors >= 5 {
+			if consecutiveErrors >= 2 {
 				return nil, fmt.Errorf("Lỗi kết nối Python OCR (127.0.0.1:8000): %v.\nVui lòng kiểm tra lại Python server", ocrErr)
 			}
 		} else {

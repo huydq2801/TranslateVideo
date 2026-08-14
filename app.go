@@ -62,14 +62,32 @@ func (a *App) startPythonOCRServer() {
 	}
 
 	execDir, _ := os.Getwd()
-	serverScript := filepath.Join(execDir, "python_ocr", "server.py")
-	if _, err := os.Stat(serverScript); os.IsNotExist(err) {
-		if exePath, err := os.Executable(); err == nil {
-			serverScript = filepath.Join(filepath.Dir(exePath), "python_ocr", "server.py")
+	candidates := []string{
+		filepath.Join(execDir, "python_ocr", "server.py"),
+		filepath.Join(filepath.Dir(execDir), "python_ocr", "server.py"),
+	}
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		candidates = append(candidates,
+			filepath.Join(exeDir, "python_ocr", "server.py"),
+			filepath.Join(filepath.Dir(exeDir), "python_ocr", "server.py"),
+			filepath.Join(filepath.Dir(filepath.Dir(exeDir)), "python_ocr", "server.py"),
+		)
+	}
+
+	serverScript := ""
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			serverScript = c
+			break
 		}
+	}
+	if serverScript == "" {
+		return
 	}
 
 	cmd := exec.Command(pythonExec, serverScript)
+	cmd.Dir = filepath.Dir(filepath.Dir(serverScript))
 	pipeline.SetHideWindow(cmd)
 	if err := cmd.Start(); err == nil {
 		a.ocrCmd = cmd
