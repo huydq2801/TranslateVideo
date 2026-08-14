@@ -52,21 +52,35 @@
                 <div class="video-toolbar">
                     <div class="toolbar-group">
                         <button id="btn-select-video" class="btn btn-primary">📁 Chọn Video</button>
-                        <select id="sel-scan-interval" class="input-field" title="Tần suất quét khung hình" style="width: 170px;">
-                            <option value="0.15">Rất Tỉ Mỉ (0.15s / 6.7 FPS)</option>
-                            <option value="0.20">Tỉ Mỉ (0.20s / 5 FPS)</option>
-                            <option value="0.30" selected>Chuẩn (0.30s / 3.3 FPS)</option>
-                            <option value="0.50">Nhanh (0.50s / 2 FPS)</option>
-                            <option value="1.00">Siêu Nhanh (1.00s / 1 FPS)</option>
+                        <select id="sel-video-type" class="input-field" title="Chọn loại video để áp dụng pipeline tối ưu" style="width: 185px;">
+                            <option value="comic_cjk" selected>📖 Truyện tranh (CJK)</option>
+                            <option value="sims_en">🎬 Sims Story (Tiếng Anh)</option>
                         </select>
-                        <button id="btn-start-scan" class="btn btn-emerald" disabled>⚡ Quét Thoại (Full-Frame)</button>
-                        <button id="btn-filter-trash" class="btn" disabled>🧹 AI Lọc Rác</button>
-                        <button id="btn-analyze-context" class="btn" disabled>🧠 AI Ngữ Cảnh & Xưng Hô</button>
+                        <select id="sel-scan-interval" class="input-field" title="Tần suất quét khung hình" style="width: 150px;">
+                            <option value="0.15">Rất Tỉ Mỉ (0.15s)</option>
+                            <option value="0.20">Tỉ Mỉ (0.20s)</option>
+                            <option value="0.30" selected>Chuẩn (0.30s)</option>
+                            <option value="0.50">Nhanh (0.50s)</option>
+                            <option value="1.00">Siêu Nhanh (1s)</option>
+                        </select>
+                        <button id="btn-start-scan" class="btn btn-emerald" disabled title="Trích xuất khung hình và quét nhận diện thoại qua OCR">⚡ Quét Thoại</button>
+                        <button id="btn-snap-all" class="btn" disabled title="Tự động dùng AI (Gemini Vision) định vị và mở rộng kích thước hộp thoại để đè kín hoàn toàn thoại gốc">🤖 Căn Hộp AI</button>
+                        <button id="btn-refine-30fps-all" class="btn" disabled title="Tinh chỉnh mốc thời gian chuẩn 30 FPS cho tất cả thoại">🎯 30 FPS</button>
+                        <button id="btn-filter-trash" class="btn" disabled title="AI tự động nhận diện và ẩn các ký tự rác/logo/watermark">🧹 Lọc Rác</button>
+                        <button id="btn-open-pronoun-modal" class="btn btn-indigo" title="Cấu hình quy tắc xưng hô và bảng thuật ngữ cố định">💬 Xưng Hô & Ngữ Cảnh</button>
                     </div>
 
                     <div class="toolbar-group">
-                        <button id="btn-translate-all" class="btn btn-primary" disabled>🌐 Dịch AI (Gemini 3.5 Flash Lite)</button>
-                        <button id="btn-export-video" class="btn btn-emerald" disabled>💾 Xuất Video MP4</button>
+                        <button id="btn-translate-all" class="btn btn-emerald" disabled title="Bắt đầu dịch thoại AI và tự động đọc lại trau chuốt liền mạch toàn bộ kịch bản">🌐 Dịch AI (Gemini)</button>
+                        <button id="btn-polish-script" class="btn btn-indigo" disabled title="Cho AI đọc lại toàn bộ kịch bản đã dịch và trau chuốt lại thoại cho liền mạch, chuẩn hơn">✨ Trau Chuốt Kịch Bản</button>
+                        <button id="btn-export-json" class="btn" title="Xuất dữ liệu thoại ra file JSON dự phòng">📤 Xuất JSON</button>
+                        <button id="btn-import-json" class="btn" title="Nhập dữ liệu thoại từ file JSON đã lưu">📥 Nhập JSON</button>
+                        <select id="sel-subtitle-style" class="input-field" title="Kiểu phụ đề khi xuất video" style="width: 155px;">
+                            <option value="bubble" selected>Khung Manga</option>
+                            <option value="sims_bar">Thanh Sub Đáy</option>
+                        </select>
+                        <button id="btn-export-srt" class="btn" disabled title="Xuất riêng file phụ đề .SRT chuẩn để xem bằng VLC / PotPlayer">📄 Xuất SRT</button>
+                        <button id="btn-export-video" class="btn btn-primary" disabled title="Xuất video hoàn chỉnh đè phụ đề Tiếng Việt qua GPU FFmpeg">💾 Xuất Video MP4</button>
                     </div>
                 </div>
             </section>
@@ -74,8 +88,9 @@
             <!-- Right: Streamlined Dialogue Sidebar -->
             <section class="sidebar-section">
                 <div class="sidebar-header">
-                    <div class="sidebar-title">💬 Danh Sách Thoại (<span id="dialogue-count">0</span>)</div>
-                    <div class="toolbar-group">
+                    <div class="sidebar-title">💬 Danh Sách Thoại (<span id="dialogue-count">0</span>) <span id="scan-time-badge" style="font-size: 0.78rem; font-weight: 600; color: var(--accent-emerald); margin-left: 6px; display: none;"></span></div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <button id="btn-add-dialogue" class="btn btn-sm btn-emerald" title="Thêm một câu thoại thủ công tại mốc thời gian hiện tại">➕ Thêm Thoại</button>
                         <label style="font-size: 0.78rem; color: var(--text-secondary); cursor: pointer;">
                             <input type="checkbox" id="chk-show-trash" style="margin-right: 4px;"> Hiện Đã Xóa
                         </label>
@@ -91,10 +106,94 @@
         </main>
     </div>
 
+    <!-- Pronoun & Context Settings Modal -->
+    <div id="pronoun-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card modal-large">
+            <div class="modal-header">
+                <h3>💬 Quản Lý Quy Tắc Xưng Hô & Ngữ Cảnh Dịch</h3>
+                <button id="btn-close-pronoun-modal" class="btn-close">&times;</button>
+            </div>
+
+            <div class="modal-body" style="max-height: 65vh; overflow-y: auto; padding-right: 6px;">
+                <!-- Preset Styles -->
+                <div class="preset-section" style="margin-bottom: 14px;">
+                    <label class="section-label">⚡ Chọn Thể Loại / Preset Xưng Hô Nhanh:</label>
+                    <div class="preset-chips" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px;">
+                        <button type="button" class="chip-btn" data-preset="ngon_tinh">💖 Ngôn Tình (Anh - Em / Tôi - Cô)</button>
+                        <button type="button" class="chip-btn" data-preset="tien_hiep">⚔️ Tiên Hiệp / Cổ Trang (Ta - Ngươi / Huynh - Đệ)</button>
+                        <button type="button" class="chip-btn" data-preset="ban_be">🏫 Học Đường / Bạn Bè (Tớ - Cậu / Mày - Tớ)</button>
+                        <button type="button" class="chip-btn" data-preset="hien_dai">🏢 Hiện Đại / Công Sở (Tôi - Anh / Chị)</button>
+                    </div>
+                </div>
+
+                <!-- Character Pairs Table -->
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label class="section-label">👥 Xưng Hô Theo Nhân Vật:</label>
+                        <button type="button" id="btn-add-char-pair" class="btn btn-sm btn-outline">➕ Thêm Cặp Xưng Hô</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="pronoun-table" id="table-char-pairs">
+                            <thead>
+                                <tr>
+                                    <th>Nhân vật / Quan hệ (Gốc hoặc Vai trò)</th>
+                                    <th>Quy tắc xưng hô Tiếng Việt</th>
+                                    <th style="width: 50px; text-align: center;">Xóa</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-char-pairs">
+                                <!-- Dynamic rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Glossary Table -->
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label class="section-label">📖 Bảng Tên Riêng & Thuật Ngữ (Glossary):</label>
+                        <button type="button" id="btn-add-glossary-entry" class="btn btn-sm btn-outline">➕ Thêm Thuật Ngữ</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="pronoun-table" id="table-glossary">
+                            <thead>
+                                <tr>
+                                    <th>Từ / Tên gốc (Trung / Anh)</th>
+                                    <th>Dịch cố định Tiếng Việt</th>
+                                    <th style="width: 50px; text-align: center;">Xóa</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-glossary">
+                                <!-- Dynamic rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Freeform Pronoun Instructions -->
+                <div class="form-group">
+                    <label class="section-label">📝 Ghi Chú Quy Tắc Xưng Hô Tự Do (Gửi Trực Tiếp Cho AI):</label>
+                    <textarea id="txt-pronoun-rules" class="input-field" rows="3" style="width: 100%; font-family: inherit; margin-top: 4px;" placeholder="Ví dụ: Nam chính (Lăng Thiên) gọi nữ chính là Em và xưng Anh. Khi gặp kẻ thù xưng Ta gọi Ngươi. Tuyệt đối không dùng Tôi/Cậu."></textarea>
+                </div>
+            </div>
+
+            <div class="modal-footer" style="display: flex; gap: 8px; justify-content: space-between; margin-top: 14px; pt: 10px; border-top: 1px solid var(--border-color);">
+                <button type="button" id="btn-ai-auto-context" class="btn btn-emerald">🧠 AI Tự Phân Tích & Gợi Ý</button>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" id="btn-bulk-replace-pronouns" class="btn btn-primary" title="Tìm & Thay thế đại từ xưng hô trên danh sách thoại đã dịch">🔄 Đổi Xưng Hô Hàng Loạt</button>
+                    <button type="button" id="btn-save-pronoun-config" class="btn btn-emerald">💾 Lưu Quy Tắc & Đóng</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Progress Modal -->
     <div id="progress-modal" class="modal-overlay" style="display: none;">
         <div class="modal-card">
-            <h3 id="modal-title" style="font-size: 1rem; font-weight: 700;">Đang xử lý...</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                <h3 id="modal-title" style="font-size: 1rem; font-weight: 700; margin: 0;">Đang xử lý...</h3>
+                <span id="modal-timer" class="modal-timer">⏱️ 00:00</span>
+            </div>
             <div class="progress-bar-track">
                 <div id="modal-progress-fill" class="progress-bar-fill"></div>
             </div>

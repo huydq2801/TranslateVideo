@@ -34,6 +34,13 @@ type GlossaryEntry struct {
 	Target string `json:"target"`
 }
 
+type TranslationContextConfig struct {
+	PresetStyle     string          `json:"presetStyle,omitempty"`
+	PronounRules    string          `json:"pronounRules,omitempty"`
+	CharacterPairs  []GlossaryEntry `json:"characterPairs,omitempty"`
+	GlossaryEntries []GlossaryEntry `json:"glossaryEntries,omitempty"`
+}
+
 type HealthStatus struct {
 	OCROnline bool   `json:"ocrOnline"`
 	OCREngine string `json:"ocrEngine"`
@@ -42,11 +49,13 @@ type HealthStatus struct {
 }
 
 type ScanConfig struct {
-	VideoPath  string  `json:"videoPath"`
-	Interval   float64 `json:"interval"`
-	Threshold  uint8   `json:"threshold"`
-	SourceLang string  `json:"sourceLang"`
-	GeminiKey  string  `json:"geminiKey"`
+	VideoPath     string  `json:"videoPath"`
+	Interval      float64 `json:"interval"`
+	Threshold     uint8   `json:"threshold"`
+	SourceLang    string  `json:"sourceLang"`
+	GeminiKey     string  `json:"geminiKey"`
+	VideoType     string  `json:"videoType,omitempty"`     // "comic_cjk" (default) or "sims_en"
+	SubtitleStyle string  `json:"subtitleStyle,omitempty"` // "bubble" (default) or "sims_bar"
 }
 
 func FormatTimeSec(seconds float64) string {

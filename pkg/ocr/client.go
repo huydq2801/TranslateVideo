@@ -32,7 +32,7 @@ type OCRFullFrameBatchResponse struct {
 }
 
 var HTTPClient = &http.Client{
-	Timeout: 15 * time.Second,
+	Timeout: 180 * time.Second,
 	Transport: &http.Transport{
 		MaxIdleConns:        100,
 		MaxIdleConnsPerHost: 100,
@@ -45,25 +45,71 @@ func MergeVerticallyAdjacentLines(items []OCRFullFrameItem) []OCRFullFrameItem {
 		return items
 	}
 
+	// Sort by Y first, then X to process row by row left to right
 	sort.Slice(items, func(i, j int) bool {
-		return items[i].BBox[1] < items[j].BBox[1]
+		yi, yj := items[i].BBox[1], items[j].BBox[1]
+		if math.Abs(float64(yi-yj)) <= 12 { // same row tolerance
+			return items[i].BBox[0] < items[j].BBox[0]
+		}
+		return yi < yj
 	})
 
-	var merged []OCRFullFrameItem
-	visited := make([]bool, len(items))
+	// Pass 1: Merge same-row fragments broken by inline icons/emojis.
+	// Two items are "same row" when their Y centers are within ~60% of the shorter height
+	// and the horizontal gap between them is ≤80px (icon width).
+	var sameRowMerged []OCRFullFrameItem
+	for _, item := range items {
+		if len(sameRowMerged) == 0 {
+			sameRowMerged = append(sameRowMerged, item)
+			continue
+		}
+		prev := &sameRowMerged[len(sameRowMerged)-1]
 
-	for i := 0; i < len(items); i++ {
+		prevY1, prevH := prev.BBox[1], prev.BBox[3]
+		currY1, currH := item.BBox[1], item.BBox[3]
+		prevCenterY := float64(prevY1) + float64(prevH)/2.0
+		currCenterY := float64(currY1) + float64(currH)/2.0
+		minH := math.Min(float64(prevH), float64(currH))
+
+		prevX2 := prev.BBox[0] + prev.BBox[2]
+		currX1 := item.BBox[0]
+		horizGap := currX1 - prevX2 // pixels between right edge of prev and left edge of curr
+
+		sameRow := math.Abs(prevCenterY-currCenterY) <= minH*0.6
+		adjacentH := horizGap >= -10 && horizGap <= 80 // icon typically ≤80px wide
+
+		if sameRow && adjacentH {
+			// Join the two fragments back into one item
+			if translation.IsCJK(prev.Text) || translation.IsCJK(item.Text) {
+				prev.Text = strings.TrimSpace(prev.Text) + strings.TrimSpace(item.Text)
+			} else {
+				prev.Text = strings.TrimSpace(prev.Text) + " " + strings.TrimSpace(item.Text)
+			}
+			newX2 := max(prevX2, item.BBox[0]+item.BBox[2])
+			newY1 := min(prev.BBox[1], item.BBox[1])
+			newY2 := max(prev.BBox[1]+prev.BBox[3], item.BBox[1]+item.BBox[3])
+			prev.BBox = [4]int{prev.BBox[0], newY1, newX2 - prev.BBox[0], newY2 - newY1}
+			continue
+		}
+		sameRowMerged = append(sameRowMerged, item)
+	}
+
+	// Pass 2: Merge vertically adjacent items (original logic)
+	var merged []OCRFullFrameItem
+	visited := make([]bool, len(sameRowMerged))
+
+	for i := 0; i < len(sameRowMerged); i++ {
 		if visited[i] {
 			continue
 		}
-		curr := items[i]
+		curr := sameRowMerged[i]
 		visited[i] = true
 
-		for j := i + 1; j < len(items); j++ {
+		for j := i + 1; j < len(sameRowMerged); j++ {
 			if visited[j] {
 				continue
 			}
-			next := items[j]
+			next := sameRowMerged[j]
 
 			currX1, currY1, currW, currH := curr.BBox[0], curr.BBox[1], curr.BBox[2], curr.BBox[3]
 			nextX1, nextY1, nextW, nextH := next.BBox[0], next.BBox[1], next.BBox[2], next.BBox[3]

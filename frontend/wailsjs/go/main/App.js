@@ -6,6 +6,10 @@ export function AnalyzeContextAndGlossary(arg1, arg2) {
   return window['go']['main']['App']['AnalyzeContextAndGlossary'](arg1, arg2);
 }
 
+export function BulkReplacePronouns(arg1, arg2) {
+  return window['go']['main']['App']['BulkReplacePronouns'](arg1, arg2);
+}
+
 export function CancelScan() {
   return window['go']['main']['App']['CancelScan']();
 }
@@ -14,12 +18,40 @@ export function CheckSystemHealth(arg1) {
   return window['go']['main']['App']['CheckSystemHealth'](arg1);
 }
 
+export function ExportSRT(arg1, arg2) {
+  return window['go']['main']['App']['ExportSRT'](arg1, arg2);
+}
+
 export function ExportVideo(arg1, arg2, arg3) {
   return window['go']['main']['App']['ExportVideo'](arg1, arg2, arg3);
 }
 
+export function ExportVideoWithOptions(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ExportVideoWithOptions'](arg1, arg2, arg3, arg4);
+}
+
 export function FilterTrashWithAI(arg1, arg2) {
   return window['go']['main']['App']['FilterTrashWithAI'](arg1, arg2);
+}
+
+export function RefineAllDialoguesTimestamps(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RefineAllDialoguesTimestamps'](arg1, arg2, arg3);
+}
+
+export function RefineDialogueTimestamp(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RefineDialogueTimestamp'](arg1, arg2, arg3);
+}
+
+export function RefineFullScriptTranslation(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RefineFullScriptTranslation'](arg1, arg2, arg3);
+}
+
+export function SaveJSONFile(arg1, arg2) {
+  return window['go']['main']['App']['SaveJSONFile'](arg1, arg2);
+}
+
+export function SelectJSONFile() {
+  return window['go']['main']['App']['SelectJSONFile']();
 }
 
 export function SelectSaveLocation(arg1) {
@@ -28,6 +60,10 @@ export function SelectSaveLocation(arg1) {
 
 export function SelectVideoFile() {
   return window['go']['main']['App']['SelectVideoFile']();
+}
+
+export function SnapAllDialoguesBBoxes(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SnapAllDialoguesBBoxes'](arg1, arg2, arg3);
 }
 
 export function SnapSingleDialogueBBox(arg1, arg2, arg3, arg4) {
@@ -40,4 +76,8 @@ export function StartFullPipelineScan(arg1) {
 
 export function TranslateDialogues(arg1, arg2, arg3) {
   return window['go']['main']['App']['TranslateDialogues'](arg1, arg2, arg3);
+}
+
+export function TranslateSingleDialogue(arg1, arg2, arg3) {
+  return window['go']['main']['App']['TranslateSingleDialogue'](arg1, arg2, arg3);
 }

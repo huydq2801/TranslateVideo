@@ -24,7 +24,86 @@ func fileExists(filename string) bool {
 	return !info.IsDir()
 }
 
+func startLocalVideoServer() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/video", func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("[LocalVideoServer] Recovered panic while streaming video: %v", rec)
+			}
+		}()
+
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
+		w.Header().Set("Accept-Ranges", "bytes")
+
+		filePath := r.URL.Query().Get("path")
+		if filePath == "" {
+			http.Error(w, "Vui lòng chọn file video", http.StatusBadRequest)
+			return
+		}
+
+		cleanPath := filepath.Clean(filePath)
+		targetPath := ""
+		if fileExists(cleanPath) {
+			targetPath = cleanPath
+		} else if fileExists(filePath) {
+			targetPath = filePath
+		}
+
+		if targetPath == "" {
+			http.Error(w, "Không tìm thấy file video: "+cleanPath, http.StatusNotFound)
+			return
+		}
+
+		ext := strings.ToLower(filepath.Ext(targetPath))
+		switch ext {
+		case ".mp4":
+			w.Header().Set("Content-Type", "video/mp4")
+		case ".webm":
+			w.Header().Set("Content-Type", "video/webm")
+		case ".mkv":
+			w.Header().Set("Content-Type", "video/x-matroska")
+		case ".mov":
+			w.Header().Set("Content-Type", "video/quicktime")
+		case ".avi":
+			w.Header().Set("Content-Type", "video/x-msvideo")
+		default:
+			w.Header().Set("Content-Type", "application/octet-stream")
+		}
+
+		file, err := os.Open(targetPath)
+		if err != nil {
+			http.Error(w, "Lỗi mở file video: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer file.Close()
+
+		stat, err := file.Stat()
+		if err != nil {
+			http.Error(w, "Lỗi đọc thông tin file: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		http.ServeContent(w, r, stat.Name(), stat.ModTime(), file)
+	})
+
+	server := &http.Server{
+		Addr:    "127.0.0.1:18989",
+		Handler: mux,
+	}
+
+	go func() {
+		log.Printf("[LocalVideoServer] Listening on http://127.0.0.1:18989...")
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("[LocalVideoServer] Error: %v", err)
+		}
+	}()
+}
+
 func main() {
+	startLocalVideoServer()
+
 	app := NewApp()
 
 	err := wails.Run(&options.App{
@@ -40,48 +119,9 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 13, G: 15, B: 23, A: 255},
 		AssetServer: &assetserver.Options{
 			Assets: assets,
-			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if strings.HasPrefix(r.URL.Path, "/wails-local-video") {
-					w.Header().Set("Access-Control-Allow-Origin", "*")
-					w.Header().Set("Accept-Ranges", "bytes")
-					w.Header().Set("Cache-Control", "no-cache, private")
-
-					filePath := r.URL.Query().Get("path")
-					if filePath == "" {
-						http.Error(w, "Vui lòng chọn file video", http.StatusBadRequest)
-						return
-					}
-					cleanPath := filepath.Clean(filePath)
-					targetPath := ""
-					if fileExists(cleanPath) {
-						targetPath = cleanPath
-					} else if fileExists(filePath) {
-						targetPath = filePath
-					}
-
-					if targetPath != "" {
-						ext := strings.ToLower(filepath.Ext(targetPath))
-						switch ext {
-						case ".mp4":
-							w.Header().Set("Content-Type", "video/mp4")
-						case ".webm":
-							w.Header().Set("Content-Type", "video/webm")
-						case ".mkv":
-							w.Header().Set("Content-Type", "video/x-matroska")
-						case ".mov":
-							w.Header().Set("Content-Type", "video/quicktime")
-						case ".avi":
-							w.Header().Set("Content-Type", "video/x-msvideo")
-						}
-						http.ServeFile(w, r, targetPath)
-						return
-					}
-					http.Error(w, "Không tìm thấy file video: "+cleanPath, http.StatusNotFound)
-					return
-				}
-			}),
 		},
-		OnStartup: app.startup,
+		OnStartup:  app.startup,
+		OnShutdown: app.shutdown,
 		Bind: []interface{}{
 			app,
 		},
