@@ -392,14 +392,25 @@ func ScanFullFramePipeline(ctx context.Context, cfg config.ScanConfig, onProgres
 
 	interval := cfg.Interval
 	if interval <= 0 {
-		interval = 0.75
+		interval = 0.50
 	}
 
-	tempDir, err := os.MkdirTemp("", "comicify_stream_*")
+	tempDir, err := os.MkdirTemp("", "comicify_fullframe_*")
 	if err != nil {
 		return nil, fmt.Errorf("lỗi tạo thư mục tạm: %v", err)
 	}
 	defer os.RemoveAll(tempDir)
+
+	totalFrames, err := ExtractFramesWithFFmpeg(ctx, cfg.VideoPath, interval, cfg.VideoType, tempDir, onProgress)
+	if err != nil || totalFrames == 0 {
+		return nil, fmt.Errorf("không trích xuất được khung hình nào từ video: %v", err)
+	}
+
+	files, err := filepath.Glob(filepath.Join(tempDir, "frame_*.jpg"))
+	if err != nil || len(files) == 0 {
+		return nil, fmt.Errorf("không tìm thấy file frame JPEG trong thư mục tạm")
+	}
+	sort.Strings(files)
 
 	origW, origH := GetVideoDimensions(cfg.VideoPath)
 	scaleRatio := 1.0
@@ -409,203 +420,88 @@ func ScanFullFramePipeline(ctx context.Context, cfg config.ScanConfig, onProgres
 
 	yOffset := 0.0
 	sourceLang := cfg.SourceLang
-	filterStr := fmt.Sprintf("fps=1/%.3f,scale='min(iw,1080)':-1", interval)
 	if cfg.VideoType == "sims_en" {
-		// Crop bottom 25% ROI (y: 75% -> 100%) for Sims Story fixed bottom subtitles
-		filterStr = fmt.Sprintf("fps=1/%.3f,crop=iw:ih*0.25:0:ih*0.75,scale='min(iw,960)':-1", interval)
-		yOffset = float64(origH) * 0.75
+		// Crop begins at y: 72%
+		yOffset = float64(origH) * 0.72
 		if sourceLang == "" || sourceLang == "chi_sim" {
 			sourceLang = "en"
 		}
 	}
 
-	duration := GetVideoDuration(cfg.VideoPath)
-	estimatedTotal := 0
-	if duration > 0 {
-		estimatedTotal = int(math.Ceil(duration / interval))
-	}
-	if estimatedTotal <= 0 {
-		estimatedTotal = 100
-	}
-
-	if onProgress != nil {
-		onProgress(0, estimatedTotal, 0, fmt.Sprintf("⚡ Đang khởi động quét song song GPU/CPU: 0/%d...", estimatedTotal))
-	}
-
-	outPattern := filepath.Join(tempDir, "frame_%06d.jpg")
-	ffmpegCmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-nostdin", "-threads", "4", "-i", cfg.VideoPath, "-vf", filterStr, "-q:v", "3", outPattern)
-	SetHideWindow(ffmpegCmd)
-
-	if err := ffmpegCmd.Start(); err != nil {
-		return nil, fmt.Errorf("lỗi khởi chạy FFmpeg: %v", err)
-	}
-
-	ffmpegDone := make(chan error, 1)
-	go func() {
-		ffmpegDone <- ffmpegCmd.Wait()
-	}()
-
+	batchSize := 100
 	var candidates []config.CandidateItem
-	var candMutex sync.Mutex
-	processedFrames := 0
-	batchSize := 60
-	nextFrameIdx := 1
 	consecutiveErrors := 0
 
-	for {
+	for i := 0; i < len(files); i += batchSize {
 		select {
 		case <-ctx.Done():
-			if ffmpegCmd.Process != nil {
-				_ = ffmpegCmd.Process.Kill()
-			}
 			return nil, ctx.Err()
 		default:
 		}
 
-		// Collect ready frame files
-		var batchFiles []string
-		for {
-			targetFile := filepath.Join(tempDir, fmt.Sprintf("frame_%06d.jpg", nextFrameIdx))
-			if _, err := os.Stat(targetFile); err == nil {
-				nextTarget := filepath.Join(tempDir, fmt.Sprintf("frame_%06d.jpg", nextFrameIdx+1))
-				_, nextErr := os.Stat(nextTarget)
-				isFinished := false
-				select {
-				case <-ffmpegDone:
-					isFinished = true
-				default:
-				}
+		end := i + batchSize
+		if end > len(files) {
+			end = len(files)
+		}
+		subPaths := files[i:end]
 
-				if nextErr == nil || isFinished {
-					batchFiles = append(batchFiles, targetFile)
-					nextFrameIdx++
-					if len(batchFiles) >= batchSize {
-						break
+		if onProgress != nil {
+			pct := math.Min(99, math.Round((float64(i)/float64(len(files)))*100))
+			onProgress(i, len(files), len(candidates), fmt.Sprintf("[2/2] Nhận diện OCR: %d/%d khung hình (%.0f%% - tìm thấy %d thoại)...", i, len(files), pct, len(candidates)))
+		}
+
+		resMap, ocrErr := ocr.CallPythonOCRFullFrameBatch(ctx, subPaths, sourceLang)
+		if ocrErr != nil {
+			consecutiveErrors++
+			if consecutiveErrors >= 3 {
+				return nil, fmt.Errorf("Lỗi kết nối Python OCR (127.0.0.1:8000): %v", ocrErr)
+			}
+		} else {
+			consecutiveErrors = 0
+			for _, p := range subPaths {
+				items, ok := resMap[p]
+				if ok && len(items) > 0 {
+					base := filepath.Base(p)
+					numStr := strings.TrimSuffix(strings.TrimPrefix(base, "frame_"), ".jpg")
+					fIdx, _ := strconv.Atoi(numStr)
+					timeSec := float64(fIdx-1) * interval
+
+					merged := ocr.MergeVerticallyAdjacentLines(items)
+					for _, m := range merged {
+						norm := translation.NormalizeOCRText(m.Text)
+						if norm == "" {
+							continue
+						}
+						bbox := config.BBox{
+							X:      float64(m.BBox[0]) * scaleRatio,
+							Y:      (float64(m.BBox[1]) * scaleRatio) + yOffset,
+							Width:  float64(m.BBox[2]) * scaleRatio,
+							Height: float64(m.BBox[3]) * scaleRatio,
+						}
+						candidates = append(candidates, config.CandidateItem{
+							FrameIndex: fIdx,
+							TimeSec:    timeSec,
+							Original:   m.Text,
+							BBox:       bbox,
+						})
 					}
-				} else {
-					break
 				}
-			} else {
-				break
 			}
 		}
 
-		if len(batchFiles) > 0 {
-			resMap, ocrErr := ocr.CallPythonOCRFullFrameBatch(ctx, batchFiles, sourceLang)
-			if ocrErr != nil {
-				consecutiveErrors++
-				if consecutiveErrors >= 3 {
-					if ffmpegCmd.Process != nil {
-						_ = ffmpegCmd.Process.Kill()
-					}
-					return nil, fmt.Errorf("Lỗi kết nối Python OCR (127.0.0.1:8000): %v", ocrErr)
-				}
-			} else {
-				consecutiveErrors = 0
-				candMutex.Lock()
-				for _, p := range batchFiles {
-					items, ok := resMap[p]
-					if ok && len(items) > 0 {
-						base := filepath.Base(p)
-						numStr := strings.TrimSuffix(strings.TrimPrefix(base, "frame_"), ".jpg")
-						fIdx, _ := strconv.Atoi(numStr)
-						timeSec := float64(fIdx-1) * interval
-
-						merged := ocr.MergeVerticallyAdjacentLines(items)
-						for _, m := range merged {
-							norm := translation.NormalizeOCRText(m.Text)
-							if norm == "" {
-								continue
-							}
-							bbox := config.BBox{
-								X:      float64(m.BBox[0]) * scaleRatio,
-								Y:      (float64(m.BBox[1]) * scaleRatio) + yOffset,
-								Width:  float64(m.BBox[2]) * scaleRatio,
-								Height: float64(m.BBox[3]) * scaleRatio,
-							}
-							candidates = append(candidates, config.CandidateItem{
-								FrameIndex: fIdx,
-								TimeSec:    timeSec,
-								Original:   m.Text,
-								BBox:       bbox,
-							})
-						}
-					}
-				}
-				candMutex.Unlock()
-			}
-
-			// Clean up processed batch image files immediately from disk
-			for _, p := range batchFiles {
-				_ = os.Remove(p)
-			}
-
-			processedFrames += len(batchFiles)
-			if onProgress != nil {
-				tot := estimatedTotal
-				if processedFrames > tot {
-					tot = processedFrames
-				}
-				pct := math.Min(99, math.Round((float64(processedFrames)/float64(tot))*100))
-				onProgress(processedFrames, tot, len(candidates), fmt.Sprintf("⚡ Đang quét song song: %d/%d khung hình (%.0f%% - tìm thấy %d thoại)...", processedFrames, tot, pct, len(candidates)))
-			}
-			continue
+		// Delete batch image files immediately to prevent disk space usage
+		for _, p := range subPaths {
+			_ = os.Remove(p)
 		}
 
-		// Check if FFmpeg has completed
-		select {
-		case ffmpegErr := <-ffmpegDone:
-			// Check if any leftover files remain
-			leftovers, _ := filepath.Glob(filepath.Join(tempDir, "frame_*.jpg"))
-			if len(leftovers) > 0 {
-				sort.Strings(leftovers)
-				resMap, _ := ocr.CallPythonOCRFullFrameBatch(ctx, leftovers, sourceLang)
-				candMutex.Lock()
-				for _, p := range leftovers {
-					items, ok := resMap[p]
-					if ok && len(items) > 0 {
-						base := filepath.Base(p)
-						numStr := strings.TrimSuffix(strings.TrimPrefix(base, "frame_"), ".jpg")
-						fIdx, _ := strconv.Atoi(numStr)
-						timeSec := float64(fIdx-1) * interval
-						merged := ocr.MergeVerticallyAdjacentLines(items)
-						for _, m := range merged {
-							norm := translation.NormalizeOCRText(m.Text)
-							if norm == "" {
-								continue
-							}
-							bbox := config.BBox{
-								X:      float64(m.BBox[0]) * scaleRatio,
-								Y:      (float64(m.BBox[1]) * scaleRatio) + yOffset,
-								Width:  float64(m.BBox[2]) * scaleRatio,
-								Height: float64(m.BBox[3]) * scaleRatio,
-							}
-							candidates = append(candidates, config.CandidateItem{
-								FrameIndex: fIdx,
-								TimeSec:    timeSec,
-								Original:   m.Text,
-								BBox:       bbox,
-							})
-						}
-					}
-					_ = os.Remove(p)
-				}
-				candMutex.Unlock()
-				processedFrames += len(leftovers)
-			}
-
-			if ffmpegErr != nil && processedFrames == 0 {
-				return nil, fmt.Errorf("lỗi FFmpeg: %v", ffmpegErr)
-			}
-			goto DoneScan
-		default:
-			time.Sleep(50 * time.Millisecond)
+		if onProgress != nil {
+			pct := math.Min(99, math.Round((float64(end)/float64(len(files)))*100))
+			onProgress(end, len(files), len(candidates), fmt.Sprintf("[2/2] Nhận diện OCR: %d/%d khung hình (%.0f%% - tìm thấy %d thoại)...", end, len(files), pct, len(candidates)))
 		}
 	}
 
-DoneScan:
 	if len(candidates) == 0 {
-		return nil, fmt.Errorf("Không tìm thấy câu thoại nào trong %d khung hình video", processedFrames)
+		return nil, fmt.Errorf("Không tìm thấy câu thoại nào trong %d khung hình video", len(files))
 	}
 
 	dialogues := ClusterFrameTimestamps(candidates, interval)
@@ -619,7 +515,7 @@ DoneScan:
 	}
 
 	if onProgress != nil {
-		onProgress(processedFrames, processedFrames, len(dialogues), fmt.Sprintf("✅ Quét hoàn tất! Tìm thấy %d câu thoại trong %d khung hình.", len(dialogues), processedFrames))
+		onProgress(len(files), len(files), len(dialogues), fmt.Sprintf("✅ Quét hoàn tất! Tìm thấy %d câu thoại trong %d khung hình.", len(dialogues), len(files)))
 	}
 
 	runtime.GC()
