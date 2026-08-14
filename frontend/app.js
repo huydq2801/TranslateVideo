@@ -312,31 +312,46 @@
 
                 const isSimsStyle = (document.getElementById('sel-subtitle-style')?.value === 'sims_bar');
                 if (isSimsStyle) {
-                    ctx.fillStyle = 'rgba(15, 15, 24, 0.90)';
+                    // Cinematic Modern Subtitle Bar - 98% solid to fully mask original hardsubs without ghosting
+                    ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+                    ctx.shadowBlur = 12;
+                    ctx.shadowOffsetY = 4;
+
+                    ctx.fillStyle = 'rgba(11, 12, 16, 0.98)';
                     ctx.beginPath();
-                    ctx.roundRect(bx, by, bw, bh, 8);
+                    ctx.roundRect(bx, by, bw, bh, 14);
                     ctx.fill();
-                    ctx.strokeStyle = 'rgba(120, 120, 150, 0.6)';
+
+                    // Premium subtle glass border
+                    ctx.shadowColor = 'transparent';
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
                     ctx.lineWidth = 1.5;
                     ctx.stroke();
                 } else {
+                    ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
+                    ctx.shadowBlur = 8;
+                    ctx.shadowOffsetY = 2;
+
                     ctx.fillStyle = '#ffffff';
                     ctx.beginPath();
-                    ctx.roundRect(bx, by, bw, bh, 12);
+                    ctx.roundRect(bx, by, bw, bh, 14);
                     ctx.fill();
+                    ctx.shadowColor = 'transparent';
                 }
 
                 const text = d.translated || d.original || '';
-                ctx.fillStyle = isSimsStyle ? '#fffdf2' : '#000000';
-                const fontSize = Math.max(12, 28 * (layout.height / 1080.0));
-                ctx.font = isSimsStyle ? `italic 600 ${fontSize}px sans-serif` : `bold ${fontSize}px sans-serif`;
+                ctx.fillStyle = isSimsStyle ? '#ffffff' : '#111827';
+                const fontSize = Math.max(14, 26 * (layout.height / 1080.0));
+                ctx.font = isSimsStyle 
+                    ? `600 ${fontSize}px 'Segoe UI', 'Inter', system-ui, -apple-system, sans-serif` 
+                    : `700 ${fontSize}px 'Segoe UI', 'Inter', system-ui, -apple-system, sans-serif`;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
 
                 const words = text.split(/\s+/);
                 let lines = [];
                 let currentLine = '';
-                const maxWidth = bw * 0.85;
+                const maxWidth = bw * 0.88;
 
                 words.forEach(w => {
                     const testLine = currentLine ? `${currentLine} ${w}` : w;
@@ -349,11 +364,17 @@
                 });
                 if (currentLine) lines.push(currentLine);
 
-                const lineHeight = fontSize * 1.3;
+                const lineHeight = fontSize * 1.35;
                 const startY = by + (bh / 2.0) - ((lines.length - 1) * lineHeight / 2.0);
 
                 lines.forEach((line, idx) => {
-                    ctx.fillText(line, bx + (bw / 2.0), startY + idx * lineHeight);
+                    const textY = startY + idx * lineHeight;
+                    if (isSimsStyle) {
+                        ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+                        ctx.fillText(line, bx + (bw / 2.0) + 1, textY + 1.5);
+                        ctx.fillStyle = '#ffffff';
+                    }
+                    ctx.fillText(line, bx + (bw / 2.0), textY);
                 });
 
                 if (isSelected) {

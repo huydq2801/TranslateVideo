@@ -159,15 +159,15 @@ func RenderSimsSubtitlePNG(d config.DialogueItem, index int, outDir string, canv
 	bgW := math.Min(float64(canvasWidth)-bgX-10, subW+2*padX)
 	bgH := math.Min(float64(canvasHeight)-bgY-10, subH+2*padY)
 
-	// Semi-transparent dark background bar matching Sims 4 narrative style
-	dc.SetRGBA(0.08, 0.08, 0.12, 0.88)
-	dc.DrawRoundedRectangle(bgX, bgY, bgW, bgH, 10)
+	// Solid premium dark background bar (98% opacity) to completely mask original hardsubs without ghosting
+	dc.SetRGBA(0.04, 0.05, 0.07, 0.98)
+	dc.DrawRoundedRectangle(bgX, bgY, bgW, bgH, 14)
 	dc.Fill()
 
-	// Subtle border
-	dc.SetRGBA(0.4, 0.4, 0.5, 0.6)
-	dc.SetLineWidth(1.5)
-	dc.DrawRoundedRectangle(bgX, bgY, bgW, bgH, 10)
+	// Subtle modern glass border
+	dc.SetRGBA(1.0, 1.0, 1.0, 0.16)
+	dc.SetLineWidth(2.0)
+	dc.DrawRoundedRectangle(bgX, bgY, bgW, bgH, 14)
 	dc.Stroke()
 
 	// === Text Rendering ===
