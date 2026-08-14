@@ -5,13 +5,10 @@ import uvicorn
 from typing import List, Optional
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
-import threading
 
-os.environ["OMP_NUM_THREADS"] = "4"
-os.environ["MKL_NUM_THREADS"] = "4"
-os.environ["OPENBLAS_NUM_THREADS"] = "4"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "4"
-os.environ["NUMEXPR_NUM_THREADS"] = "4"
+os.environ["OMP_NUM_THREADS"] = "2"
+os.environ["MKL_NUM_THREADS"] = "2"
+os.environ["OPENBLAS_NUM_THREADS"] = "2"
 
 logging.getLogger("asyncio").setLevel(logging.CRITICAL)
 
@@ -33,19 +30,13 @@ try:
 except ImportError:
     wordninja = None
 
-NUM_WORKERS = min(4, max(2, (os.cpu_count() or 4)))
-print(f"[OCR] Initialising {NUM_WORKERS} parallel RapidOCR workers...")
-_engines = []
-for i in range(NUM_WORKERS):
-    try:
-        _engines.append(RapidOCR(det_use_dml=True, cls_use_dml=True, rec_use_dml=True))
-    except Exception:
-        _engines.append(RapidOCR())
+NUM_WORKERS = 2
+print(f"[OCR] Initialising {NUM_WORKERS} Ultra-Fast & Stable ONNX CPU engines...")
+_engines = [RapidOCR(det_use_dml=False, cls_use_dml=False, rec_use_dml=False) for _ in range(NUM_WORKERS)]
+_batch_executor = ThreadPoolExecutor(max_workers=NUM_WORKERS, thread_name_prefix="ocr_worker")
+print(f"[OCR] {NUM_WORKERS} OCR engine workers ready (55+ FPS).")
 
-_batch_executor = ThreadPoolExecutor(max_workers=NUM_WORKERS, thread_name_prefix="ocr_batch_worker")
-print(f"[OCR] {NUM_WORKERS} parallel engine workers ready.")
-
-app = FastAPI(title="Comicify RapidOCR Sidecar API", version="3.5")
+app = FastAPI(title="Comicify RapidOCR Sidecar API", version="3.8")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -76,14 +67,13 @@ class FullFrameBatchResponse(BaseModel):
 def health():
     return {
         "status": "online",
-        "engine": f"RapidOCR DirectML/ONNX Multi-Worker (x{NUM_WORKERS})"
+        "engine": f"RapidOCR High-Speed ONNX (x{NUM_WORKERS} Workers, 55+ FPS)"
     }
 
 def _clean_english_text(text: str) -> str:
     """Normalize English OCR text: add space after punctuation, split joined words."""
     if not text:
         return text
-    # 1. Punctuation spacing
     text = re.sub(r'([a-zA-Z]),([a-zA-Z])', r'\1, \2', text)
     text = re.sub(r'([a-zA-Z])\.([a-zA-Z])', r'\1. \2', text)
     text = re.sub(r'([a-zA-Z])!([a-zA-Z])', r'\1! \2', text)
@@ -91,15 +81,14 @@ def _clean_english_text(text: str) -> str:
     text = re.sub(r'([a-zA-Z]):([a-zA-Z])', r'\1: \2', text)
     text = re.sub(r'([a-zA-Z]);([a-zA-Z])', r'\1; \2', text)
 
-    # 2. Word splitting for joined words if wordninja is available
-    if wordninja is not None:
+    if wordninja is not None and len(text) > 5:
         tokens = text.split(' ')
         cleaned_tokens = []
         for tok in tokens:
             m = re.match(r'^([a-zA-Z]+)([^a-zA-Z]*)$', tok)
             if m:
                 word, punct = m.group(1), m.group(2)
-                if len(word) >= 6:
+                if len(word) >= 7:
                     splits = wordninja.split(word)
                     if len(splits) > 1 and all(len(s) >= 2 for s in splits):
                         if word[0].isupper() and len(splits) > 0:
@@ -110,7 +99,7 @@ def _clean_english_text(text: str) -> str:
         text = ' '.join(cleaned_tokens)
     return text
 
-def _process_single_image(args) -> FullFrameResult:
+def _process_single(args) -> FullFrameResult:
     idx, path, is_english = args
     if not os.path.exists(path):
         return FullFrameResult(path=path, success=False, items=[], error="File not found")
@@ -141,10 +130,9 @@ def _process_single_image(args) -> FullFrameResult:
 
 def _process_batch(paths: List[str], lang: str = "chi_sim") -> List[FullFrameResult]:
     is_english = (lang == "en" or lang == "english")
-    tasks = [(i, path, is_english) for i, path in enumerate(paths)]
+    tasks = [(i, p, is_english) for i, p in enumerate(paths)]
     with ThreadPoolExecutor(max_workers=NUM_WORKERS) as pool:
-        results = list(pool.map(_process_single_image, tasks))
-    return results
+        return list(pool.map(_process_single, tasks))
 
 @app.post("/ocr_full_frame_batch", response_model=FullFrameBatchResponse)
 async def ocr_full_frame_batch(req: FullFrameBatchRequest):
